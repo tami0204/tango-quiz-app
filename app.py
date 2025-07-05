@@ -60,11 +60,11 @@ def load_new_quiz():
     else:
         st.session_state.current_quiz = None
 
-# 初回または「次へ」でクイズをロード
+# 初回 or 次へ でクイズ読み込み
 if st.session_state.current_quiz is None:
     load_new_quiz()
 
-# --- 全問完了した場合 ---
+# --- 全問完了時の処理 ---
 if len(filtered_df) == 0:
     st.warning("その条件の問題はありません。")
 elif st.session_state.current_quiz is None:
@@ -72,11 +72,15 @@ elif st.session_state.current_quiz is None:
     if st.button("🔁 セッションをリセットする"):
         for key in ["total", "correct", "answered_words", "latest_result", "current_quiz", "quiz_answered", "quiz_choice"]:
             st.session_state[key] = 0 if isinstance(st.session_state[key], int) else set() if isinstance(st.session_state[key], set) else ""
-        st.experimental_rerun()
+        st.rerun()
 else:
     quiz = st.session_state.current_quiz
     st.subheader(f"この用語の説明は？：**{quiz['word']}**")
-    st.session_state.quiz_choice = st.radio("選択肢を選んでください", quiz["options"], index=0 if st.session_state.quiz_choice is None else quiz["options"].index(st.session_state.quiz_choice))
+    st.session_state.quiz_choice = st.radio(
+        "選択肢を選んでください",
+        quiz["options"],
+        index=0 if st.session_state.quiz_choice is None else quiz["options"].index(st.session_state.quiz_choice)
+    )
 
     if not st.session_state.quiz_answered:
         if st.button("✅ 答え合わせ"):
@@ -88,9 +92,9 @@ else:
             else:
                 st.session_state.latest_result = f"❌ 不正解… 正解は「{quiz['correct']}」でした。"
             st.session_state.quiz_answered = True
-            st.experimental_rerun()
+            st.rerun()
     else:
         st.info(st.session_state.latest_result)
         if st.button("➡️ 次の問題へ"):
             st.session_state.current_quiz = None
-            st.experimental_rerun()
+            st.rerun()
