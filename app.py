@@ -51,7 +51,7 @@ if st.button("✅ 答え合わせ"):
     else:
         st.error(f"❌ 不正解... 正解は：「{correct}」")
 
-# 次の問題ボタン
+# 次の問題ボタン（rerun対応版）
 if st.button("🔁 次の問題へ"):
     st.session_state.next_question = True
-    st.experimental_rerun()
+    st.rerun()
