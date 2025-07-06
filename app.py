@@ -67,16 +67,18 @@ if st.session_state.current_quiz is None and len(filtered_df) > 0:
 if len(filtered_df) == 0:
     st.success("🎉 すべての問題に回答しました！")
 
-    if st.session_state.history:
-        df_log = pd.DataFrame(st.session_state.history)
-        csv = df_log.to_csv(index=False).encode("utf-8-sig")
-        st.download_button("📥 学習記録をCSVで保存", data=csv, file_name="quiz_results.csv", mime="text/csv")
+# --- 履歴保存表示（全問終了後に必ず表示） ---
+df_log = pd.DataFrame(st.session_state.history or [])
+csv = df_log.to_csv(index=False).encode("utf-8-sig")
+st.download_button("📥 学習記録をCSVで保存", data=csv, file_name="quiz_results.csv", mime="text/csv")
 
-    if st.button("🔁 セッションをリセット"):
-        for k in defaults:
-            st.session_state[k] = defaults[k] if not isinstance(defaults[k], set) else set()
-        st.rerun()
+# --- セッションリセット（終了後のみ表示） ---
+if len(filtered_df) == 0 and st.button("🔁 セッションをリセット"):
+    for k in defaults:
+        st.session_state[k] = defaults[k] if not isinstance(defaults[k], set) else set()
+    st.rerun()
 
+# --- クイズ表示と答え合わせ ---
 elif st.session_state.current_quiz:
     q = st.session_state.current_quiz
     st.subheader(f"この用語の説明は？：**{q['word']}**")
@@ -101,7 +103,6 @@ elif st.session_state.current_quiz:
             else:
                 st.session_state.latest_result = f"❌ 不正解… 正解は「{q['correct']}」でした。"
 
-            # ⬇️ 履歴記録
             st.session_state.history.append({
                 "用語": q["word"],
                 "私の選択": choice_kana,
