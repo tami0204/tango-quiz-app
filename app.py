@@ -20,18 +20,17 @@ class QuizApp:
 
     def initialize_session(self):
         for key, val in self.defaults.items():
-            st.session_state[key] = val if not isinstance(val, set) else set()
+            if key not in st.session_state:
+                st.session_state[key] = val if not isinstance(val, set) else set()
 
     def filter_data(self):
         field = st.selectbox("分野を選ぶ", ["すべて"] + sorted(self.df["分野"].dropna().unique()))
         period = st.selectbox("試験区分を選ぶ", ["すべて"] + sorted(self.df["試験区分"].dropna().unique()))
-
         df_filtered = self.df.copy()
         if field != "すべて":
             df_filtered = df_filtered[df_filtered["分野"] == field]
         if period != "すべて":
             df_filtered = df_filtered[df_filtered["試験区分"] == period]
-
         remaining = df_filtered[~df_filtered["用語"].isin(st.session_state.answered_words)]
         return df_filtered, remaining
 
@@ -58,19 +57,19 @@ class QuizApp:
             }
             st.session_state.quiz_answered = False
             st.session_state.quiz_choice = None
-        else:
-            st.session_state.current_quiz = None
 
     def display_quiz(self):
         q = st.session_state.current_quiz
+        if not q:
+            st.warning("⚠️ クイズが未ロードです。")
+            return
+
         st.subheader(f"この用語の説明は？：**{q['word']}**")
         labeled = [f"{self.kana_labels[i]}：{txt}" for i, txt in enumerate(q["options"])]
 
         selected = st.radio("選択肢を選んでください", labeled,
-            index=0 
-            if st.session_state.quiz_choice is None
-            else 
-               labeled.index(st.session_state.quiz_choice)
+            index=0 if st.session_state.quiz_choice is None
+            else labeled.index(st.session_state.quiz_choice)
         )
         st.session_state.quiz_choice = selected
 
@@ -83,32 +82,26 @@ class QuizApp:
             if st.button("✅ 答え合わせ"):
                 st.session_state.total += 1
                 st.session_state.answered_words.add(q["word"])
-                result = "〇" 
-                if choice_text == q["correct"] :
-                    result = "〇"
-                else:
-                   result = "×"
-                   st.session_state.latest_result = (
-                    "✅ 正解！🎉" 
-                    if result == "〇"
-                    else
-                       f"❌ 不正解… 正解は「{q['correct']}」でした。"
+                result = "〇" if choice_text == q["correct"] else "×"
+                st.session_state.latest_result = (
+                    "✅ 正解！🎉" if result == "〇"
+                    else f"❌ 不正解… 正解は「{q['correct']}」でした。"
                 )
-                st.session_state.correct += 1 
-                if not result == "〇" :
-                  st.session_state.history.append({
+                st.session_state.correct += 1 if result == "〇" else 0
+                st.session_state.history.append({
                     "用語": q["word"],
                     "私の選択": choice_kana,
                     "正解": correct_kana,
                     "正誤": result
                 })
                 st.session_state.quiz_answered = True
-                st.rerun()
-        else:
+
+        if st.session_state.quiz_answered:
             st.info(st.session_state.latest_result)
             if st.button("➡️ 次の問題へ"):
                 st.session_state.current_quiz = None
-                st.rerun()
+                st.session_state.quiz_answered = False
+                st.session_state.quiz_choice = None
 
     def show_completion(self):
         st.success("🎉 すべての問題に回答しました！")
@@ -120,25 +113,21 @@ class QuizApp:
 
     def reset_session_button(self):
         if st.button("🔁 セッションをリセット"):
-            self.initialize_session()
-            st.rerun()
+            for key, val in self.defaults.items():
+                st.session_state[key] = val if not isinstance(val, set) else set()
+            st.success("✅ セッションをリセットしました")
 
     def run(self):
         df_filtered, remaining_df = self.filter_data()
         self.show_progress(df_filtered)
-
         if st.session_state.current_quiz is None and len(remaining_df) > 0:
             self.load_quiz(df_filtered, remaining_df)
-
         if len(remaining_df) == 0:
             self.show_completion()
-        self.offer_download()
-
-        if len(remaining_df) == 0:
-            self.reset_session_button()
-        elif st.session_state.current_quiz:
+        else:
             self.display_quiz()
-
+        self.offer_download()
+        self.reset_session_button()
 
 # --- アプリ起動 ---
 df = pd.read_csv("tango.csv")
