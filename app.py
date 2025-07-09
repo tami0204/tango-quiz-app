@@ -20,8 +20,7 @@ class QuizApp:
 
     def initialize_session(self):
         for key, val in self.defaults.items():
-            if key not in st.session_state:
-                st.session_state[key] = val if not isinstance(val, set) else set()
+            st.session_state[key] = val if key not in st.session_state else st.session_state[key]
 
     def filter_data(self):
         field = st.selectbox("分野を選ぶ", ["すべて"] + sorted(self.df["分野"].dropna().unique()))
@@ -99,7 +98,7 @@ class QuizApp:
                 st.session_state.current_quiz = None
                 st.session_state.quiz_answered = False
                 st.session_state.quiz_choice = None
-                # ✔︎ 次の表示は次回描画タイミングに任せる（2回押し仕様）
+                # 2回目の描画時に load_quiz() が呼ばれる仕様
 
     def show_completion(self):
         st.success("🎉 すべての問題に回答しました！")
@@ -111,4 +110,25 @@ class QuizApp:
 
     def reset_session_button(self):
         if st.button("🔁 セッションをリセット"):
-            for key, val in
+            for key, val in self.defaults.items():
+                st.session_state[key] = val if not isinstance(val, set) else set()
+            st.success("✅ セッションをリセットしました")
+
+    def run(self):
+        df_filtered, remaining_df = self.filter_data()
+        self.show_progress(df_filtered)
+
+        if st.session_state.current_quiz is None and len(remaining_df) > 0:
+            self.load_quiz(df_filtered, remaining_df)
+        if len(remaining_df) == 0:
+            self.show_completion()
+        else:
+            self.display_quiz(df_filtered, remaining_df)
+
+        self.offer_download()
+        self.reset_session_button()
+
+# --- アプリ起動 ---
+df = pd.read_csv("tango.csv")
+app = QuizApp(df)
+app.run()
