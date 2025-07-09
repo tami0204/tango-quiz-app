@@ -86,7 +86,7 @@ class QuizApp:
                 result = "〇" 
                 if choice_text == q["correct"] :
                     result = "〇"
-                else 
+                else:
                    result = "×"
                    st.session_state.latest_result = (
                     "✅ 正解！🎉" 
