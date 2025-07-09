@@ -14,8 +14,7 @@ class QuizApp:
             "current_quiz": None,
             "quiz_answered": False,
             "quiz_choice": None,
-            "history": [],
-            "next_queued": False
+            "history": []
         }
         self.initialize_session()
 
@@ -60,10 +59,6 @@ class QuizApp:
             st.session_state.quiz_choice = None
 
     def display_quiz(self, df_filtered, remaining_df):
-        if st.session_state.next_queued:
-            st.session_state.next_queued = False
-            self.load_quiz(df_filtered, remaining_df)
-
         q = st.session_state.current_quiz
         if not q:
             return
@@ -104,7 +99,7 @@ class QuizApp:
                 st.session_state.current_quiz = None
                 st.session_state.quiz_answered = False
                 st.session_state.quiz_choice = None
-                st.session_state.next_queued = True
+                st.experimental_rerun()  # 🔧 即再描画で1クリック遷移を保証
 
     def show_completion(self):
         st.success("🎉 すべての問題に回答しました！")
