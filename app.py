@@ -116,10 +116,7 @@ class QuizApp:
             if st.button("➡️ 次の問題へ"):
                 st.session_state.current_quiz = None
                 st.session_state.quiz_answered = False
-                # 次の問題へ進む際にquiz_choiceをリセットする必要はない（load_quizで設定されるため）
-                # st.session_state.quiz_choice = None # この行は不要になりました
-                # Streamlitの性質上、ボタンが押されるとアプリ全体が再実行され、
-                # その際に load_quiz() が再度呼ばれて次の問題が設定されます。
+                st.rerun() # ここでアプリケーションを強制的に再実行します。
 
     def show_completion(self):
         # すべての問題に回答した場合のメッセージを表示します。
@@ -137,11 +134,17 @@ class QuizApp:
             for key, val in self.defaults.items():
                 st.session_state[key] = val if not isinstance(val, set) else set() # セットは新しい空のセットで初期化
             st.success("✅ セッションをリセットしました")
+            st.rerun() # リセット後も強制的に再実行します。
 
     def run(self):
         # アプリケーションのメインロジックです。
         df_filtered, remaining_df = self.filter_data()
         self.show_progress(df_filtered)
+
+        # ここに、読み込んだデータ（またはその一部）を表示するセクションを追加
+        with st.expander("📚 読み込みデータを確認"):
+            st.write("`tango.csv`から読み込まれたデータの最初の5行です。")
+            st.dataframe(self.df.head())
 
         if st.session_state.current_quiz is None and len(remaining_df) > 0:
             self.load_quiz(df_filtered, remaining_df)
@@ -169,4 +172,8 @@ Apple,リンゴです,果物,初級
 Banana,バナナです,果物,初級
 Computer,計算機です,IT,応用
 Network,通信網です,IT,応用
-    """)
+Database,データを管理するシステムです,IT,応用
+Algorithm,問題を解決するための手順です,プログラミング,中級
+Cloud Computing,インターネット経由でサービスを提供する形態です,IT,上級
+Machine Learning,機械がデータから学習する技術です,AI,上級
+""")
