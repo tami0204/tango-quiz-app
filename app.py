@@ -14,8 +14,7 @@ class QuizApp:
             "current_quiz": None,
             "quiz_answered": False,
             "quiz_choice": None,
-            "history": [],
-            "next_trigger": False
+            "history": []
         }
         self.initialize_session()
 
@@ -100,7 +99,7 @@ class QuizApp:
                 st.session_state.current_quiz = None
                 st.session_state.quiz_answered = False
                 st.session_state.quiz_choice = None
-                st.session_state.next_trigger = True
+                # ✔︎ 次の表示は次回描画タイミングに任せる（2回押し仕様）
 
     def show_completion(self):
         st.success("🎉 すべての問題に回答しました！")
@@ -112,30 +111,4 @@ class QuizApp:
 
     def reset_session_button(self):
         if st.button("🔁 セッションをリセット"):
-            for key, val in self.defaults.items():
-                st.session_state[key] = val if not isinstance(val, set) else set()
-            st.success("✅ セッションをリセットしました")
-
-    def run(self):
-        df_filtered, remaining_df = self.filter_data()
-        self.show_progress(df_filtered)
-
-        if st.session_state.current_quiz is None and len(remaining_df) > 0:
-            self.load_quiz(df_filtered, remaining_df)
-        if len(remaining_df) == 0:
-            self.show_completion()
-        else:
-            self.display_quiz(df_filtered, remaining_df)
-
-        self.offer_download()
-        self.reset_session_button()
-
-        # 🔧 rerun を run の末尾で安全に実行
-        if st.session_state.get("next_trigger"):
-            st.session_state.next_trigger = False
-            st.experimental_rerun()
-
-# --- アプリ起動 ---
-df = pd.read_csv("tango.csv")
-app = QuizApp(df)
-app.run()
+            for key, val in
