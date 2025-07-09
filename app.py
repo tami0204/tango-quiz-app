@@ -60,56 +60,47 @@ class QuizApp:
             st.session_state.quiz_choice = None
         else:
             st.session_state.current_quiz = None
+def display_quiz(self):
+    q = st.session_state.current_quiz
+    st.subheader(f"この用語の説明は？：**{q['word']}**")
+    labeled = [f"{self.kana_labels[i]}：{txt}" for i, txt in enumerate(q["options"])]
 
-    def display_quiz(self):
-        q = st.session_state.current_quiz
-        st.subheader(f"この用語の説明は？：**{q['word']}**")
-        labeled = [f"{self.kana_labels[i]}：{txt}" for i, txt in enumerate(q["options"])]
+    selected = st.radio(
+        "選択肢を選んでください", labeled,
+        index=0 if st.session_state.quiz_choice is None
+        else labeled.index(st.session_state.quiz_choice)
+    )
+    st.session_state.quiz_choice = selected
 
-        selected = st.radio("選択肢を選んでください", labeled,
-            index=0 
-            if st.session_state.quiz_choice is None
-            else 
-               labeled.index(st.session_state.quiz_choice)
-        )
-        st.session_state.quiz_choice = selected
+    choice_idx = labeled.index(selected)
+    choice_text = q["options"][choice_idx]
+    choice_kana = self.kana_labels[choice_idx]
+    correct_kana = self.kana_labels[q["options"].index(q["correct"])]
 
-        choice_idx = labeled.index(selected)
-        choice_text = q["options"][choice_idx]
-        choice_kana = self.kana_labels[choice_idx]
-        correct_kana = self.kana_labels[q["options"].index(q["correct"])]
+    if not st.session_state.quiz_answered:
+        if st.button("✅ 答え合わせ"):
+            st.session_state.total += 1
+            st.session_state.answered_words.add(q["word"])
+            result = "〇" if choice_text == q["correct"] else "×"
+            st.session_state.latest_result = (
+                "✅ 正解！🎉" if result == "〇"
+                else f"❌ 不正解… 正解は「{q['correct']}」でした。"
+            )
+            st.session_state.correct += 1 if result == "〇" else 0
+            st.session_state.history.append({
+                "用語": q["word"],
+                "私の選択": choice_kana,
+                "正解": correct_kana,
+                "正誤": result
+            })
+            st.session_state.quiz_answered = True
 
-        if not st.session_state.quiz_answered:
-            if st.button("✅ 答え合わせ"):
-                st.session_state.total += 1
-                st.session_state.answered_words.add(q["word"])
-                result = "〇" 
-                if choice_text == q["correct"] :
-                    result = "〇"
-                else:
-                   result = "×"
-                   st.session_state.latest_result = (
-                    "✅ 正解！🎉" 
-                    if result == "〇"
-                    else
-                       f"❌ 不正解… 正解は「{q['correct']}」でした。"
-                )
-                st.session_state.correct += 1 
-                if not result == "〇" :
-                  st.session_state.history.append({
-                    "用語": q["word"],
-                    "私の選択": choice_kana,
-                    "正解": correct_kana,
-                    "正誤": result
-                })
-                st.session_state.quiz_answered = True
-                st.rerun()
-        else:
-            st.info(st.session_state.latest_result)
-            if st.button("➡️ 次の問題へ"):
-                st.session_state.current_quiz = None
-                st.rerun()
-
+    if st.session_state.quiz_answered:
+        st.info(st.session_state.latest_result)
+        if st.button("➡️ 次の問題へ"):
+            st.session_state.current_quiz = None
+            st.session_state.quiz_choice = None
+            st.session_state.quiz_answered = False
     def show_completion(self):
         st.success("🎉 すべての問題に回答しました！")
 
