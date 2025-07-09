@@ -76,7 +76,7 @@ st.download_button("📥 学習記録をCSVで保存", data=csv, file_name="quiz
 if len(filtered_df) == 0 and st.button("🔁 セッションをリセット"):
     for k in defaults:
         st.session_state[k] = defaults[k] 
-        if not isinstance(defaults[k], set) 
+        if not isinstance(defaults[k], set) :
         else set()
     st.rerun()
 
