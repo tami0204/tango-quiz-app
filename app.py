@@ -21,7 +21,7 @@ class QuizApp:
     def initialize_session(self):
         for key, val in self.defaults.items():
             st.session_state[key] = val 
-            if not isinstance(val, set) 
+            if not isinstance(val, set) :
             else set()
 
     def filter_data(self):
