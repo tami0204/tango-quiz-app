@@ -96,7 +96,7 @@ class QuizApp:
                 )
                 st.session_state.correct += 1 
                 if result == "〇" :
-                else :
+                else 
                    st.session_state.history.append({
                     "用語": q["word"],
                     "私の選択": choice_kana,
