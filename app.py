@@ -77,7 +77,8 @@ if len(filtered_df) == 0 and st.button("🔁 セッションをリセット"):
     for k in defaults:
         st.session_state[k] = defaults[k] 
         if not isinstance(defaults[k], set) :
-        else set()
+            else set()
+
     st.rerun()
 
 # --- クイズ表示と答え合わせ ---
