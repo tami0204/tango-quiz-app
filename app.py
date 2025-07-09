@@ -14,7 +14,8 @@ class QuizApp:
             "current_quiz": None,
             "quiz_answered": False,
             "quiz_choice": None,
-            "history": []
+            "history": [],
+            "next_trigger": False
         }
         self.initialize_session()
 
@@ -99,7 +100,7 @@ class QuizApp:
                 st.session_state.current_quiz = None
                 st.session_state.quiz_answered = False
                 st.session_state.quiz_choice = None
-                st.experimental_rerun()  # 🔧 即再描画で1クリック遷移を保証
+                st.session_state.next_trigger = True
 
     def show_completion(self):
         st.success("🎉 すべての問題に回答しました！")
@@ -116,6 +117,10 @@ class QuizApp:
             st.success("✅ セッションをリセットしました")
 
     def run(self):
+        if st.session_state.get("next_trigger"):
+            st.session_state.next_trigger = False
+            st.experimental_rerun()
+
         df_filtered, remaining_df = self.filter_data()
         self.show_progress(df_filtered)
 
