@@ -13,7 +13,7 @@ class QuizApp:
             "latest_result": "",
             "current_quiz": None,
             "quiz_answered": False,
-            "quiz_choice": None,
+            "quiz_choice": None, # 初期値はNoneのままでOK
             "history": []
         }
         self.initialize_session()
@@ -62,7 +62,10 @@ class QuizApp:
                 "options": options
             }
             st.session_state.quiz_answered = False
-            st.session_state.quiz_choice = None
+            # 新しい問題がロードされたら、最初の選択肢をデフォルトで選択状態にする
+            # これにより、st.radioが確実にリセットされます。
+            st.session_state.quiz_choice = f"{self.kana_labels[0]}：{options[0]}"
+
 
     def display_quiz(self, df_filtered, remaining_df):
         # 現在のクイズの問題と選択肢を表示します。
@@ -75,10 +78,10 @@ class QuizApp:
         labeled = [f"{self.kana_labels[i]}：{txt}" for i, txt in enumerate(q["options"])]
         
         # st.radioに一意のkeyを追加し、ウィジェットが確実に再レンダリングされるようにします。
+        # quiz_choiceが常に有効な選択肢を指すように変更したため、indexの指定方法を変更
         selected = st.radio("選択肢を選んでください", labeled,
-                            index=0 if st.session_state.quiz_choice is None
-                            else labeled.index(st.session_state.quiz_choice),
-                            key=f"quiz_radio_{st.session_state.total}") # ここにkeyを追加
+                            index=labeled.index(st.session_state.quiz_choice), # quiz_choiceが常に有効な選択肢を指す
+                            key=f"quiz_radio_{st.session_state.total}") 
 
         st.session_state.quiz_choice = selected
 
@@ -113,7 +116,8 @@ class QuizApp:
             if st.button("➡️ 次の問題へ"):
                 st.session_state.current_quiz = None
                 st.session_state.quiz_answered = False
-                st.session_state.quiz_choice = None
+                # 次の問題へ進む際にquiz_choiceをリセットする必要はない（load_quizで設定されるため）
+                # st.session_state.quiz_choice = None # この行は不要になりました
                 # Streamlitの性質上、ボタンが押されるとアプリ全体が再実行され、
                 # その際に load_quiz() が再度呼ばれて次の問題が設定されます。
 
@@ -166,4 +170,3 @@ Banana,バナナです,果物,初級
 Computer,計算機です,IT,応用
 Network,通信網です,IT,応用
     """)
-
