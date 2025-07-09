@@ -14,7 +14,8 @@ class QuizApp:
             "current_quiz": None,
             "quiz_answered": False,
             "quiz_choice": None,
-            "history": []
+            "history": [],
+            "proceed_to_next": False  # ← 状態遷移用の明示的フラグ
         }
         self.initialize_session()
 
@@ -59,9 +60,16 @@ class QuizApp:
             st.session_state.quiz_choice = None
 
     def display_quiz(self, df_filtered, remaining_df):
+        # 次へフラグが立っていたら、即新しいクイズをロード
+        if st.session_state.proceed_to_next:
+            st.session_state.current_quiz = None
+            st.session_state.quiz_answered = False
+            st.session_state.quiz_choice = None
+            st.session_state.proceed_to_next = False
+            self.load_quiz(df_filtered, remaining_df)
+
         q = st.session_state.current_quiz
         if not q:
-            st.warning("⚠️ クイズが読み込まれていません。")
             return
 
         st.subheader(f"この用語の説明は？：**{q['word']}**")
@@ -97,11 +105,7 @@ class QuizApp:
         if st.session_state.quiz_answered:
             st.info(st.session_state.latest_result)
             if st.button("➡️ 次の問題へ"):
-                st.session_state.current_quiz = None
-                st.session_state.quiz_answered = False
-                st.session_state.quiz_choice = None
-                # ✅ 次の問題を即ロード
-                self.load_quiz(df_filtered, remaining_df)
+                st.session_state.proceed_to_next = True
 
     def show_completion(self):
         st.success("🎉 すべての問題に回答しました！")
@@ -120,8 +124,10 @@ class QuizApp:
     def run(self):
         df_filtered, remaining_df = self.filter_data()
         self.show_progress(df_filtered)
+        # 問題が空で、次へも未押下ならロード
         if st.session_state.current_quiz is None and len(remaining_df) > 0:
             self.load_quiz(df_filtered, remaining_df)
+        # 問題が尽きたら終了メッセージ
         if len(remaining_df) == 0:
             self.show_completion()
         else:
