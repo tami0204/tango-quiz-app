@@ -117,10 +117,6 @@ class QuizApp:
             st.success("✅ セッションをリセットしました")
 
     def run(self):
-        if st.session_state.get("next_trigger"):
-            st.session_state.next_trigger = False
-            st.experimental_rerun()
-
         df_filtered, remaining_df = self.filter_data()
         self.show_progress(df_filtered)
 
@@ -134,7 +130,11 @@ class QuizApp:
         self.offer_download()
         self.reset_session_button()
 
-# --- アプリ起動 ---
+# --- トップレベルで rerun を処理してから起動 ---
+if st.session_state.get("next_trigger"):
+    st.session_state.next_trigger = False
+    st.experimental_rerun()
+
 df = pd.read_csv("tango.csv")
 app = QuizApp(df)
 app.run()
