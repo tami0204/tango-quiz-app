@@ -85,7 +85,8 @@ class QuizApp:
                 st.session_state.answered_words.add(q["word"])
                 result = "〇" 
                 if choice_text == q["correct"] :
-                else "×"
+                else 
+                   result = "×"
                    st.session_state.latest_result = (
                     "✅ 正解！🎉" 
                     if result == "〇"
