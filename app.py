@@ -95,7 +95,7 @@ class QuizApp:
                        f"❌ 不正解… 正解は「{q['correct']}」でした。"
                 )
                 st.session_state.correct += 1 
-                if result == "〇" 
+                if result == "〇" :
                 else 0
                    st.session_state.history.append({
                     "用語": q["word"],
