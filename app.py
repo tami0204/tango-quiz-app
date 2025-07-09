@@ -130,14 +130,12 @@ class QuizApp:
         self.offer_download()
         self.reset_session_button()
 
-# --- rerunフラグをトップレベルで処理してから起動 ---
-def rerun_if_triggered():
-    if "next_trigger" in st.session_state and st.session_state.next_trigger:
-        st.session_state.next_trigger = False
-        st.experimental_rerun()
+        # 🔧 rerun を run の末尾で安全に実行
+        if st.session_state.get("next_trigger"):
+            st.session_state.next_trigger = False
+            st.experimental_rerun()
 
-rerun_if_triggered()
-
+# --- アプリ起動 ---
 df = pd.read_csv("tango.csv")
 app = QuizApp(df)
 app.run()
