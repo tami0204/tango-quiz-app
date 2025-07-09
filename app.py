@@ -120,6 +120,10 @@ class QuizApp:
         df_filtered, remaining_df = self.filter_data()
         self.show_progress(df_filtered)
 
+        if st.session_state.get("next_trigger"):
+            st.session_state.next_trigger = False
+            st.experimental_rerun()
+
         if st.session_state.current_quiz is None and len(remaining_df) > 0:
             self.load_quiz(df_filtered, remaining_df)
         if len(remaining_df) == 0:
@@ -130,11 +134,7 @@ class QuizApp:
         self.offer_download()
         self.reset_session_button()
 
-# --- トップレベルで rerun を処理してから起動 ---
-if st.session_state.get("next_trigger"):
-    st.session_state.next_trigger = False
-    st.experimental_rerun()
-
+# --- アプリ起動 ---
 df = pd.read_csv("tango.csv")
 app = QuizApp(df)
 app.run()
