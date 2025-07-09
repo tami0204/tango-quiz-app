@@ -67,9 +67,8 @@ class QuizApp:
         st.subheader(f"この用語の説明は？：**{q['word']}**")
         labeled = [f"{self.kana_labels[i]}：{txt}" for i, txt in enumerate(q["options"])]
         selected = st.radio("選択肢を選んでください", labeled,
-            index=0 if st.session_state.quiz_choice is None
-            else labeled.index(st.session_state.quiz_choice)
-        )
+                            index=0 if st.session_state.quiz_choice is None
+                            else labeled.index(st.session_state.quiz_choice))
         st.session_state.quiz_choice = selected
 
         choice_idx = labeled.index(selected)
@@ -101,6 +100,7 @@ class QuizApp:
                 st.session_state.current_quiz = None
                 st.session_state.quiz_answered = False
                 st.session_state.quiz_choice = None
+                # ✅ 次の問題を即ロード
                 self.load_quiz(df_filtered, remaining_df)
 
     def show_completion(self):
