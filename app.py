@@ -22,7 +22,8 @@ class QuizApp:
         for key, val in self.defaults.items():
             st.session_state[key] = val 
             if not isinstance(val, set) :
-            else set()
+            else: 
+                set()
 
     def filter_data(self):
         field = st.selectbox("分野を選ぶ", ["すべて"] + sorted(self.df["分野"].dropna().unique()))
