@@ -67,8 +67,10 @@ class QuizApp:
         labeled = [f"{self.kana_labels[i]}：{txt}" for i, txt in enumerate(q["options"])]
 
         selected = st.radio("選択肢を選んでください", labeled,
-            index=0 if st.session_state.quiz_choice is None
-            else labeled.index(st.session_state.quiz_choice)
+            index=0 
+            if st.session_state.quiz_choice is None
+            else 
+               labeled.index(st.session_state.quiz_choice)
         )
         st.session_state.quiz_choice = selected
 
@@ -81,13 +83,18 @@ class QuizApp:
             if st.button("✅ 答え合わせ"):
                 st.session_state.total += 1
                 st.session_state.answered_words.add(q["word"])
-                result = "〇" if choice_text == q["correct"] else "×"
-                st.session_state.latest_result = (
-                    "✅ 正解！🎉" if result == "〇"
-                    else f"❌ 不正解… 正解は「{q['correct']}」でした。"
+                result = "〇" 
+                if choice_text == q["correct"] else "×"
+                   st.session_state.latest_result = (
+                    "✅ 正解！🎉" 
+                    if result == "〇"
+                    else
+                       f"❌ 不正解… 正解は「{q['correct']}」でした。"
                 )
-                st.session_state.correct += 1 if result == "〇" else 0
-                st.session_state.history.append({
+                st.session_state.correct += 1 
+                if result == "〇" 
+                else 0
+                   st.session_state.history.append({
                     "用語": q["word"],
                     "私の選択": choice_kana,
                     "正解": correct_kana,
