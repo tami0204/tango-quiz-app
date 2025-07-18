@@ -23,19 +23,19 @@ class QuizApp:
             st.session_state[key] = val if key not in st.session_state else st.session_state[key]
 
     def filter_data(self):
-        category = st.selectbox("カテゴリを選ぶ", ["すべて"] + sorted(self.df["カテゴリ"].dropna().unique()))
         field = st.selectbox("分野を選ぶ", ["すべて"] + sorted(self.df["分野"].dropna().unique()))
+        period = st.selectbox("試験区分を選ぶ", ["すべて"] + sorted(self.df["試験区分"].dropna().unique()))
         df_filtered = self.df.copy()
-        if category != "すべて":
-            df_filtered = df_filtered[df_filtered["カテゴリ"] == category]
         if field != "すべて":
             df_filtered = df_filtered[df_filtered["分野"] == field]
+        if period != "すべて":
+            df_filtered = df_filtered[df_filtered["試験区分"] == period]
         remaining = df_filtered[~df_filtered["単語"].isin(st.session_state.answered_words)]
         return df_filtered, remaining
 
     def show_progress(self, df_filtered):
         st.markdown(f"📊 **進捗：{len(st.session_state.answered_words)} / {len(df_filtered)} 語**")
-        st.markdown(f"🔁 **総回答：{st.session_state.total} 回 / 🎯 正解：{st.session_state.correct} 回**")
+        st.markdown(f"🔁 **総回答数：{st.session_state.total} 回 / 🎯 正解数：{st.session_state.correct} 回**")
 
     def load_quiz(self, df_filtered, remaining_df):
         if len(remaining_df) > 0:
@@ -63,22 +63,18 @@ class QuizApp:
         q = st.session_state.current_quiz
         if not q:
             return
-
         st.subheader(f"この用語の説明は？：**{q['word']}**")
-        st.markdown(f"🧩 **午後記述での使用例：** {q.get('記述例', '')}")
-        st.markdown(f"🎯 **使用理由／文脈：** {q.get('文脈', '')}")
-        
+        st.markdown(f"🧩 **午後記述での使用例：** {q['記述例']}")
+        st.markdown(f"🎯 **使用理由／文脈：** {q['文脈']}")
         labeled = [f"{self.kana_labels[i]}：{txt}" for i, txt in enumerate(q["options"])]
         selected = st.radio("選択肢を選んでください", labeled,
-                            index=labeled.index(st.session_state.quiz_choice),
-                            key=f"quiz_radio_{st.session_state.total}")
+            index=labeled.index(st.session_state.quiz_choice),
+            key=f"quiz_radio_{st.session_state.total}")
         st.session_state.quiz_choice = selected
-
         choice_idx = labeled.index(selected)
         choice_text = q["options"][choice_idx]
         choice_kana = self.kana_labels[choice_idx]
         correct_kana = self.kana_labels[q["options"].index(q["correct"])]
-
         if not st.session_state.quiz_answered:
             if st.button("✅ 答え合わせ"):
                 st.session_state.total += 1
@@ -94,11 +90,10 @@ class QuizApp:
                     "私の選択": choice_kana,
                     "正解": correct_kana,
                     "正誤": result,
-                    "午後記述での使用例": q.get("記述例", ""),
-                    "使用理由／文脈": q.get("文脈", "")
+                    "午後記述での使用例": q["記述例"],
+                    "使用理由／文脈": q["文脈"]
                 })
                 st.session_state.quiz_answered = True
-
         if st.session_state.quiz_answered:
             st.info(st.session_state.latest_result)
             if st.button("➡️ 次の問題へ"):
@@ -112,7 +107,7 @@ class QuizApp:
     def offer_download(self):
         df_log = pd.DataFrame(st.session_state.history or [])
         csv = df_log.to_csv(index=False).encode("utf-8-sig")
-        st.download_button("📥 学習履歴をCSVで保存", data=csv, file_name="quiz_results.csv", mime="text/csv")
+        st.download_button("📥 学習記録をCSVで保存", data=csv, file_name="quiz_results.csv", mime="text/csv")
 
     def reset_session_button(self):
         if st.button("🔁 セッションをリセット"):
@@ -124,17 +119,14 @@ class QuizApp:
     def run(self):
         df_filtered, remaining_df = self.filter_data()
         self.show_progress(df_filtered)
-
-        with st.expander("📂 読み込みデータの確認（先頭5行）"):
+        with st.expander("📚 読み込みデータの確認"):
             st.dataframe(self.df.head())
-
         if st.session_state.current_quiz is None and len(remaining_df) > 0:
             self.load_quiz(df_filtered, remaining_df)
         if len(remaining_df) == 0:
             self.show_completion()
         else:
             self.display_quiz(df_filtered, remaining_df)
-
         self.offer_download()
         self.reset_session_button()
 
@@ -144,5 +136,5 @@ try:
     app = QuizApp(df)
     app.run()
 except FileNotFoundError:
-    st.error("❌ 'tango.csv' が見つかりません。このスクリプトと同じフォルダに置いてください。")
-    st.info("📎 CSVには以下の列が必要です：カテゴリ,分野,単語,説明,午後記述での使用例,使用理由／文脈")
+    st.error("❌ 'tango.csv' が見つかりません。")
+    st.info("次の列名がすべて含まれている必要があります：カテゴリ,分野,単語,説明,午後記述での使用例,使用理由／文脈")
