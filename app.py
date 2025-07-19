@@ -173,35 +173,4 @@ class QuizApp:
 
         st.session_state.quiz_answered = True
 
-    def _display_result_and_next_button(self):
-        """回答結果メッセージと次の問題へ進むボタンを表示します。"""
-        st.info(st.session_state.latest_result)
-        st.markdown(f"💡 **説明:** {st.session_state.latest_correct_description}")
-
-        if st.button("➡️ 次の問題へ"):
-            st.session_state.current_quiz = None
-            st.session_state.quiz_answered = False
-            st.rerun()
-
-    def display_quiz(self, df_filtered: pd.DataFrame, remaining_df: pd.DataFrame):
-        """クイズの質問と選択肢を表示し、回答を処理します。"""
-        q = st.session_state.current_quiz
-        if not q:
-            return
-
-        self._display_quiz_question()
-
-        labeled_options = [f"{self.kana_labels[i]}：{txt}" for i, txt in enumerate(q["選択肢"])]
-
-        selected_labeled_option = st.radio(
-            "選択肢を選んでください",
-            labeled_options,
-            index=st.session_state.quiz_choice_index,
-            key=f"quiz_radio_{st.session_state.total}",
-            disabled=st.session_state.quiz_answered
-        )
-
-        selected_option_index = labeled_options.index(selected_labeled_option)
-        selected_option_text = q["選択肢"][selected_option_index]
-
-        if st
+    def _
