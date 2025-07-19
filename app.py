@@ -183,6 +183,11 @@ class QuizApp:
         else:
             st.info("まだ学習履歴がありません。")
 
+    def reset_session_button(self): # このメソッドが追加されました
+        """セッションをリセットするためのボタンを表示します。"""
+        if st.button("🔁 セッションをリセット"):
+            self._reset_session_state() # 抽出したリセットロジックを呼び出す
+
 
     def run(self):
         """アプリケーションのメイン実行ロジックです。"""
@@ -289,4 +294,3 @@ except FileNotFoundError:
 except Exception as e:
     st.error(f"エラーが発生しました: {e}")
     st.info("データファイル 'tango.csv' の内容を確認してください。")
-
