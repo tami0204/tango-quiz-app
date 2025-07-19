@@ -23,11 +23,13 @@ class QuizApp:
         if st.session_state.quiz_df is None:
             st.session_state.quiz_df = df.copy()
             
+            # '〇×結果' 列の初期化とNaNの置換
             if '〇×結果' not in st.session_state.quiz_df.columns:
                 st.session_state.quiz_df['〇×結果'] = ''
             else:
                 st.session_state.quiz_df['〇×結果'] = st.session_state.quiz_df['〇×結果'].astype(str).replace('nan', '')
 
+            # '正解回数' '不正解回数' 列の初期化
             if '正解回数' not in st.session_state.quiz_df.columns:
                 st.session_state.quiz_df['正解回数'] = 0
             if '不正解回数' not in st.session_state.quiz_df.columns:
@@ -41,6 +43,7 @@ class QuizApp:
             if key not in st.session_state:
                 st.session_state[key] = val
             if key == "answered_words" and not isinstance(st.session_state[key], set):
+                # answered_wordsがセットでない場合、セットに変換
                 st.session_state[key] = set(st.session_state[key])
 
     def _reset_session_state(self):
@@ -56,8 +59,8 @@ class QuizApp:
         st.session_state.quiz_df['不正解回数'] = 0
 
         for key, val in self.defaults.items():
-            if key != "quiz_df":
-                st.session_state[key] = val if not isinstance(val, set) else set()
+            if key != "quiz_df": # quiz_dfは初期DFから再生成するため除外
+                st.session_state[key] = val if not isinstance(val, set) else set() # セットは新しい空セットにする
         st.success("✅ セッションをリセットしました")
         st.rerun()
 
@@ -100,9 +103,16 @@ class QuizApp:
             if sum(weights) == 0:
                 q = remaining_df.sample(1).iloc[0]
             else:
-                q = remaining_df.sample(weights=weights, n=1).iloc[0]
+                # 重みにNaNや無限大がないことを確認
+                weights = [w if pd.notna(w) and w != float('inf') and w != float('-inf') else 1 for w in weights]
+                if sum(weights) == 0: # 全ての重みが0になった場合も考慮
+                    q = remaining_df.sample(1).iloc[0]
+                else:
+                    q = remaining_df.sample(weights=weights, n=1).iloc[0]
+
 
             correct_description = q["説明"]
+            # 正しい説明をpoolから除外し、重複をなくす
             wrong_options_pool = df_filtered[df_filtered["説明"] != correct_description]["説明"].drop_duplicates().tolist()
             num_wrong_options = min(3, len(wrong_options_pool))
             wrong_options = random.sample(wrong_options_pool, num_wrong_options)
@@ -193,4 +203,10 @@ class QuizApp:
 
         labeled_options = [f"{self.kana_labels[i]}：{txt}" for i, txt in enumerate(q["選択肢"])]
 
-        selected_labeled_option =
+        # st.radio の key が正しく設定されていることを再確認
+        selected_labeled_option = st.radio(
+            "選択肢を選んでください",
+            labeled_options,
+            index=st.session_state.quiz_choice_index,
+            key=f"quiz_radio_{st.session_state.total}", 
+            disabled=st.session_state.quiz_
