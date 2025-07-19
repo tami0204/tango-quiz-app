@@ -362,6 +362,10 @@ class QuizApp:
 
         st.title("用語クイズアプリ")
 
+        # DEBUG: Add category unique values to sidebar
+        st.sidebar.subheader("DEBUG: Category Unique Values")
+        st.sidebar.write(st.session_state.quiz_df["カテゴリ"].dropna().unique().tolist())
+
         df_filtered, remaining_df = self.filter_data()
         self.show_progress(df_filtered)
 
@@ -400,12 +404,6 @@ try:
             st.info("CSVファイルがUTF-8 (BOMなし/あり) で保存されているか確認してください。")
             st.stop()
     
-    # ここから下のデバッグ表示はコメントアウトされています
-    # st.sidebar.subheader("DEBUG: DataFrame Head (First 5 rows)")
-    # st.sidebar.dataframe(df.head())
-    # st.sidebar.subheader("DEBUG: DataFrame Columns")
-    # st.sidebar.write(df.columns.tolist())
-
     required_columns = ["カテゴリ", "分野", "単語", "説明", "午後記述での使用例", "使用理由／文脈", "試験区分", "出題確率（推定）", "シラバス改定有無", "改定の意図・影響", "〇×結果"]
 
     if not all(col in df.columns for col in required_columns):
