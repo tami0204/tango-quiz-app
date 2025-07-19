@@ -4,6 +4,7 @@ import random
 import os
 import plotly.express as px
 
+# --- 既存のQuizAppクラスの定義 ---
 class QuizApp:
     def __init__(self, df: pd.DataFrame):
         self.kana_labels = ["ア", "イ", "ウ", "エ", "オ"]
@@ -105,7 +106,6 @@ class QuizApp:
             correct_description = q["説明"]
             wrong_options_pool = df_filtered[df_filtered["説明"] != correct_description]["説明"].drop_duplicates().tolist()
             num_wrong_options = min(3, len(wrong_options_pool))
-            # 修正箇所: random.sampleの引数を一行に
             wrong_options = random.sample(wrong_options_pool, num_wrong_options)
 
             options = wrong_options + [correct_description]
@@ -347,6 +347,15 @@ class QuizApp:
 
         st.title("用語クイズアプリ")
 
+        # --- ここにGeminiアイコンを追加 ---
+        st.markdown(
+            f'<a href="https://gemini.google.com/" target="_blank">'
+            f'<img src="https://www.gstatic.com/lamda/images/gemini_logo_lockup_eval_ja_og.svg" alt="Geminiに質問する" width="50" style="float:right; margin-right:20px;">'
+            f'</a>',
+            unsafe_allow_html=True
+        )
+        # --- ここまでGeminiアイコンを追加 ---
+
         df_filtered, remaining_df = self.filter_data()
         self.show_progress(df_filtered)
 
@@ -379,7 +388,7 @@ try:
     
     required_columns = ["カテゴリ", "分野", "単語", "説明", "午後記述での使用例", "使用理由／文脈", "試験区分", "出題確率（推定）", "シラバス改定有無", "改定の意図・影響", "〇×結果"]
 
-    if not all(col in df.columns for col in required_columns):
+    if not all(col in df.columns for col col in required_columns):
         missing_cols = [col for col in required_columns if col not in df.columns]
         st.error(f"❌ 'tango.csv' に必要な列が不足しています。不足している列: {', '.join(missing_cols)}")
         st.stop()
