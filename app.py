@@ -183,7 +183,7 @@ class QuizApp:
         else:
             st.info("まだ学習履歴がありません。")
 
-    def reset_session_button(self): # このメソッドが追加されました
+    def reset_session_button(self):
         """セッションをリセットするためのボタンを表示します。"""
         if st.button("🔁 セッションをリセット"):
             self._reset_session_state() # 抽出したリセットロジックを呼び出す
@@ -280,8 +280,8 @@ class QuizApp:
 # アプリ実行（tango.csv に上記フォーマットでデータを保存してください）
 try:
     df = pd.read_csv("tango.csv")
-    # tango.csvの列検証を追加
-    required_columns = ["カテゴリ", "分野", "単語", "説明", "午後記述での使用例", "使用理由／文脈", "試験区分"]
+    # tango.csvの列検証を新しいCSV様式に合わせて更新
+    required_columns = ["カテゴリ", "分野", "単語", "説明", "午後記述での使用例", "使用理由／文脈", "試験区分", "出題確率（推定）", "シラバス改定有無", "改定の意図・影響"]
     if not all(col in df.columns for col in required_columns):
         st.error(f"❌ 'tango.csv' に必要な列が不足しています。不足している列: {', '.join([col for col in required_columns if col not in df.columns])}")
         st.stop() # アプリの実行を停止
@@ -290,7 +290,7 @@ try:
     app.run()
 except FileNotFoundError:
     st.error("❌ 'tango.csv' が見つかりません。")
-    st.info("必要な列：カテゴリ,分野,単語,説明,午後記述での使用例,使用理由／文脈,試験区分")
+    st.info(f"必要な列：{', '.join(['カテゴリ', '分野', '単語', '説明', '午後記述での使用例', '使用理由／文脈', '試験区分', '出題確率（推定）', 'シラバス改定有無', '改定の意図・影響'])}")
 except Exception as e:
     st.error(f"エラーが発生しました: {e}")
     st.info("データファイル 'tango.csv' の内容を確認してください。")
