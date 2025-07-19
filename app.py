@@ -16,7 +16,6 @@ class QuizApp:
             "current_quiz": None, # 現在出題中のクイズデータ
             "quiz_answered": False, # 現在のクイズが回答済みかどうかのフラグ
             "quiz_choice_index": 0, # 選択肢のラジオボタンの初期選択インデックス
-            # "history": [], # 回答履歴機能を削除
             "quiz_df": None # 更新されたクイズデータを保持するDataFrame
         }
         self._initialize_session()
@@ -106,39 +105,4 @@ class QuizApp:
             correct_description = q["説明"]
             wrong_options_pool = df_filtered[df_filtered["説明"] != correct_description]["説明"].drop_duplicates().tolist()
             num_wrong_options = min(3, len(wrong_options_pool))
-            wrong_options = random.sample(wrong_options_pool, num_wrong_options)
-
-            options = wrong_options + [correct_description]
-            random.shuffle(options)
-
-            st.session_state.current_quiz = {
-                "単語": q["単語"],
-                "説明": correct_description,
-                "選択肢": options,
-                "記述": q.get("午後記述での使用例", "N/A"),
-                "文脈": q.get("使用理由／文脈", "N/A"),
-                "区分": q.get("試験区分", "N/A"),
-                "出題確率（推定）": q.get("出題確率（推定）", "N/A"),
-                "シラバス改定有無": q.get("シラバス改定有無", "N/A"),
-                "改定の意図・影響": q.get("改定の意図・影響", "N/A")
-            }
-            st.session_state.quiz_answered = False
-            st.session_state.quiz_choice_index = 0
-            st.session_state.latest_result = ""
-            st.session_state.latest_correct_description = ""
-        else:
-            st.session_state.current_quiz = None
-
-    def _display_quiz_question(self):
-        """クイズの質問と関連情報を表示します。"""
-        q = st.session_state.current_quiz
-        if not q:
-            return
-
-        st.subheader(f"この用語の説明は？：**{q['単語']}**")
-        st.markdown(f"🧩 **午後記述での使用例：** {q['記述']}")
-        st.markdown(f"🎯 **使用理由／文脈：** {q['文脈']}")
-        st.markdown(f"🕘 **試験区分：** {q['区分']}")
-        st.markdown(f"📈 **出題確率（推定）：** {q['出題確率（推定）']}　🔄 **シラバス改定有無：** {q['シラバス改定有無']}　📝 **改定の意図・影響：** {q['改定の意図・影響']}")
-
-    def _handle_answer_submission(self, selected_
+            wrong_options = random.sample(wrong_options_pool, num
