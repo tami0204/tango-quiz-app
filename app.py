@@ -27,7 +27,6 @@ class QuizApp:
             if '〇×結果' not in st.session_state.quiz_df.columns:
                 st.session_state.quiz_df['〇×結果'] = ''
             else:
-                # ここが修正された箇所です
                 st.session_state.quiz_df['〇×結果'] = st.session_state.quiz_df['〇×結果'].astype(str).replace('nan', '')
 
             # '正解回数' '不正解回数' 列の初期化
@@ -44,7 +43,6 @@ class QuizApp:
             if key not in st.session_state:
                 st.session_state[key] = val
             if key == "answered_words" and not isinstance(st.session_state[key], set):
-                # answered_wordsがセットでない場合、セットに変換
                 st.session_state[key] = set(st.session_state[key])
 
     def _reset_session_state(self):
@@ -60,8 +58,8 @@ class QuizApp:
         st.session_state.quiz_df['不正解回数'] = 0
 
         for key, val in self.defaults.items():
-            if key != "quiz_df": # quiz_dfは初期DFから再生成するため除外
-                st.session_state[key] = val if not isinstance(val, set) else set() # セットは新しい空セットにする
+            if key != "quiz_df":
+                st.session_state[key] = val if not isinstance(val, set) else set()
         st.success("✅ セッションをリセットしました")
         st.rerun()
 
@@ -71,7 +69,6 @@ class QuizApp:
         current_field = st.session_state.get("filter_field", "すべて")
         current_level = st.session_state.get("filter_level", "すべて")
 
-        # Dropdown options are generated from DataFrame columns, ensure they are correct.
         category_options = ["すべて"] + sorted(st.session_state.quiz_df["カテゴリ"].dropna().unique())
         field_options = ["すべて"] + sorted(st.session_state.quiz_df["分野"].dropna().unique())
         level_options = ["すべて"] + sorted(st.session_state.quiz_df["試験区分"].dropna().unique())
@@ -105,16 +102,14 @@ class QuizApp:
             if sum(weights) == 0:
                 q = remaining_df.sample(1).iloc[0]
             else:
-                # 重みにNaNや無限大がないことを確認
                 weights = [w if pd.notna(w) and w != float('inf') and w != float('-inf') else 1 for w in weights]
-                if sum(weights) == 0: # 全ての重みが0になった場合も考慮
+                if sum(weights) == 0:
                     q = remaining_df.sample(1).iloc[0]
                 else:
                     q = remaining_df.sample(weights=weights, n=1).iloc[0]
 
 
             correct_description = q["説明"]
-            # 正しい説明をpoolから除外し、重複をなくす
             wrong_options_pool = df_filtered[df_filtered["説明"] != correct_description]["説明"].drop_duplicates().tolist()
             num_wrong_options = min(3, len(wrong_options_pool))
             wrong_options = random.sample(wrong_options_pool, num_wrong_options)
@@ -219,7 +214,6 @@ class QuizApp:
         if st.session_state.quiz_choice_index != selected_option_index and not st.session_state.quiz_answered:
             st.session_state.quiz_choice_index = selected_option_index
 
-        # 「答え合わせ」ボタン
         if not st.session_state.quiz_answered:
             if st.button("✅ 答え合わせ"):
                 self._handle_answer_submission(selected_option_text, q)
@@ -227,9 +221,8 @@ class QuizApp:
         else:
             self._display_result_and_next_button()
 
-        # Geminiアイコンを常に表示
         st.markdown(
-            f'<div style="text-align: left; margin-top: 10px;">' # ボタンとの間隔を調整
+            f'<div style="text-align: left; margin-top: 10px;">'
             f'<a href="https://gemini.google.com/" target="_blank">'
             f'<img src="https://www.gstatic.com/lamda/images/gemini_logo_lockup_eval_ja_og.svg" alt="Geminiに質問する" width="50">'
             f'</a>'
@@ -288,4 +281,142 @@ class QuizApp:
         st.markdown("##### 📈 カテゴリ別 / 分野別 正答率")
         
         stats_df = st.session_state.quiz_df.copy()
-        stats_df['合計回答
+        stats_df['合計回答回数'] = stats_df['正解回数'] + stats_df['不正解回数']
+        
+        category_stats = stats_df.groupby("カテゴリ").agg(
+            total_correct=('正解回数', 'sum'),
+            total_incorrect=('不正解回数', 'sum'),
+            total_attempts=('合計回答回数', 'sum')
+        ).reset_index()
+        category_stats['正答率'] = category_stats.apply(lambda row: (row['total_correct'] / row['total_attempts'] * 100) if row['total_attempts'] > 0 else 0, axis=1)
+        
+        category_stats_filtered = category_stats[category_stats['total_attempts'] > 0].sort_values(by='正答率', ascending=True)
+
+        if not category_stats_filtered.empty:
+            st.write("###### カテゴリ別")
+            fig_category = px.bar(
+                category_stats_filtered, 
+                x='カテゴリ', 
+                y='正答率', 
+                color='正答率', 
+                color_continuous_scale=px.colors.sequential.Viridis,
+                title='カテゴリ別 正答率',
+                labels={'正答率': '正答率 (%)'},
+                text_auto='.1f'
+            )
+            fig_category.update_layout(xaxis_title="カテゴリ", yaxis_title="正答率 (%)")
+            st.plotly_chart(fig_category, use_container_width=True)
+        else:
+            st.info("まだカテゴリ別の回答がありません。")
+
+        field_stats = stats_df.groupby("分野").agg(
+            total_correct=('正解回数', 'sum'),
+            total_incorrect=('不正解回数', 'sum'),
+            total_attempts=('合計回答回数', 'sum')
+        ).reset_index()
+        field_stats['正答率'] = field_stats.apply(lambda row: (row['total_correct'] / row['total_attempts'] * 100) if row['total_attempts'] > 0 else 0, axis=1)
+
+        field_stats_filtered = field_stats[field_stats['total_attempts'] > 0].sort_values(by='正答率', ascending=True)
+
+        if not field_stats_filtered.empty:
+            st.write("###### 分野別")
+            fig_field = px.bar(
+                field_stats_filtered, 
+                x='分野', 
+                y='正答率', 
+                color='正答率', 
+                color_continuous_scale=px.colors.sequential.Viridis,
+                title='分野別 正答率',
+                labels={'正答率': '正答率 (%)'},
+                text_auto='.1f'
+            )
+            fig_field.update_layout(xaxis_title="分野", yaxis_title="正答率 (%)")
+            st.plotly_chart(fig_field, use_container_width=True)
+        else:
+            st.info("まだ分野別の回答がありません。")
+
+    def run(self):
+        """アプリケーションのメイン実行ロジックです。"""
+        st.set_page_config(layout="wide", page_title="用語クイズアプリ")
+
+        st.markdown("""
+            <style>
+            .stApp { background-color: #f0f2f6; }
+            .stButton>button { background-color: #4CAF50; color: white; border-radius: 12px; padding: 10px 24px; font-size: 16px; transition-duration: 0.4s; box-shadow: 0 8px 16px 0 rgba(0,0,0,0.2), 0 6px 20px 0 rgba(0,0,0,0.19); }
+            .stButton>button:hover { background-color: #45a049; color: white; }
+            .stRadio > label { font-size: 18px; margin-bottom: 10px; padding: 10px; border-radius: 8px; background-color: #e6e6e6; border: 1px solid #ddd; }
+            .stRadio > label:hover { background-color: #dcdcdc; }
+            .stRadio > label[data-baseweb="radio"] > div > span[data-testid="stDecoration"] { cursor: default !important; }
+            .stRadio > label[data-baseweb="radio"][data-state="disabled"] { opacity: 0.7; cursor: not-allowed; }
+            .stRadio > label > div > p { font-weight: bold; }
+            h1, h2, h3 { color: #2e4053; }
+            .stInfo { background-color: #e0f2f7; color: #2196F3; border-radius: 8px; padding: 15px; margin-top: 20px; border: 1px solid #90caf9; }
+            .stSuccess { background-color: #e8f5e9; color: #4CAF50; border-radius: 8px; padding: 15px; margin-top: 20px; border: 1px solid #a5d6a7; }
+            .stError { background-color: #ffebee; color: #f44336; border-radius: 8px; padding: 15px; margin-top: 20px; border: 1px solid #ef9a9a; }
+            div[data-baseweb="select"] > div:first-child { background-color: white !important; border: 1px solid #999 !important; border-radius: 8px; }
+            div[data-baseweb="select"] div[role="listbox"] { background-color: white !important; border: 1px solid #999 !important; border-radius: 8px; }
+            div[data-baseweb="select"] input[type="text"] { background-color: white !important; border: none !important; }
+            div[data-baseweb="select"] span { color: #333; }
+            </style>
+            """, unsafe_allow_html=True)
+
+        st.title("用語クイズアプリ")
+
+        df_filtered, remaining_df = self.filter_data()
+        self.show_progress(df_filtered)
+
+        with st.expander("📊 **学習統計を表示**"):
+            self.display_statistics()
+
+        with st.expander("📂 **読み込みデータの確認**"):
+            st.dataframe(st.session_state.quiz_df.head())
+
+        if st.session_state.current_quiz is None and not remaining_df.empty:
+            self.load_quiz(df_filtered, remaining_df)
+
+        if remaining_df.empty and st.session_state.current_quiz is None:
+            self.show_completion()
+        elif st.session_state.current_quiz:
+            self.display_quiz(df_filtered, remaining_df)
+
+        self.offer_download()
+        st.markdown("---")
+        self.reset_session_button()
+
+# --- アプリ実行部分 ---
+try:
+    if not os.path.exists("tango.csv"):
+        st.error("❌ 'tango.csv' が見つかりません。")
+        st.info("必要な列: カテゴリ, 分野, 単語, 説明, 午後記述での使用例, 使用理由／文脈, 試験区分, 出題確率（推定）, シラバス改定有無, 改定の意図・影響, 〇×結果")
+        st.stop()
+
+    try:
+        # ユーザーの申告に基づき、まずBOMなしのUTF-8を試す
+        df = pd.read_csv("tango.csv", encoding='utf-8', header=0, delimiter=',')
+    except UnicodeDecodeError:
+        try:
+            # デコードエラーがあれば、次にBOMありのUTF-8 (utf_8_sig) を試す
+            df = pd.read_csv("tango.csv", encoding='utf_8_sig', header=0, delimiter=',')
+        except Exception as e:
+            st.error(f"❌ CSVファイルのエンコーディングを自動判別できませんでした。エラー: {e}")
+            st.info("CSVファイルがUTF-8 (BOMなし/あり) で保存されているか確認してください。")
+            st.stop()
+    
+    # ここで読み込んだDataFrameの最初の5行と列名を表示してデバッグ
+    st.sidebar.subheader("DEBUG: DataFrame Head (First 5 rows)")
+    st.sidebar.dataframe(df.head())
+    st.sidebar.subheader("DEBUG: DataFrame Columns")
+    st.sidebar.write(df.columns.tolist())
+
+    required_columns = ["カテゴリ", "分野", "単語", "説明", "午後記述での使用例", "使用理由／文脈", "試験区分", "出題確率（推定）", "シラバス改定有無", "改定の意図・影響", "〇×結果"]
+
+    if not all(col in df.columns for col in required_columns):
+        missing_cols = [col for col in required_columns if col not in df.columns]
+        st.error(f"❌ 'tango.csv' に必要な列が不足しています。不足している列: {', '.join(missing_cols)}")
+        st.stop()
+    
+    app = QuizApp(df)
+    app.run()
+except Exception as e:
+    st.error(f"エラーが発生しました: {e}")
+    st.info("データファイル 'tango.csv' の内容を確認してください。列名やデータ形式が正しいか、CSVが破損していないか確認してください。")
