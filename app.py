@@ -398,12 +398,12 @@ try:
         st.stop()
 
     try:
-        # ここを修正: ファイル名を変更し、delimiterをタブに設定
-        df = pd.read_csv(file_name, encoding='utf-8', header=0, delimiter='\t')
+        # ここを修正: ファイル名を変更し、delimiterをカンマに設定 (元の設定)
+        df = pd.read_csv(file_name, encoding='utf-8', header=0, delimiter=',')
     except UnicodeDecodeError:
         try:
-            # ここを修正: ファイル名を変更し、delimiterをタブに設定
-            df = pd.read_csv(file_name, encoding='utf_8_sig', header=0, delimiter='\t')
+            # ここを修正: ファイル名を変更し、delimiterをカンマに設定 (元の設定)
+            df = pd.read_csv(file_name, encoding='utf_8_sig', header=0, delimiter=',')
         except Exception as e:
             st.error(f"❌ CSV/TSVファイルのエンコーディングを自動判別できませんでした。エラー: {e}")
             st.info("ファイルがUTF-8 (BOMなし/あり) で保存されているか確認してください。")
