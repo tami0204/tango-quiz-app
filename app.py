@@ -362,10 +362,6 @@ class QuizApp:
 
         st.title("用語クイズアプリ")
 
-        # DEBUG: Add category unique values to sidebar
-        st.sidebar.subheader("DEBUG: Category Unique Values")
-        st.sidebar.write(st.session_state.quiz_df["カテゴリ"].dropna().unique().tolist())
-
         df_filtered, remaining_df = self.filter_data()
         self.show_progress(df_filtered)
 
@@ -389,7 +385,6 @@ class QuizApp:
 
 # --- アプリ実行部分 ---
 try:
-    # ファイル名を 'tango.csv' に設定
     file_name = "tango.csv" 
     
     if not os.path.exists(file_name):
@@ -398,11 +393,9 @@ try:
         st.stop()
 
     try:
-        # ここを修正: ファイル名を変更し、delimiterをカンマに設定 (元の設定)
         df = pd.read_csv(file_name, encoding='utf-8', header=0, delimiter=',')
     except UnicodeDecodeError:
         try:
-            # ここを修正: ファイル名を変更し、delimiterをカンマに設定 (元の設定)
             df = pd.read_csv(file_name, encoding='utf_8_sig', header=0, delimiter=',')
         except Exception as e:
             st.error(f"❌ CSV/TSVファイルのエンコーディングを自動判別できませんでした。エラー: {e}")
