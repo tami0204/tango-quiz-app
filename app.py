@@ -389,30 +389,35 @@ class QuizApp:
 
 # --- アプリ実行部分 ---
 try:
-    if not os.path.exists("tango.csv"):
-        st.error("❌ 'tango.csv' が見つかりません。")
+    # ファイル名を 'tango.csv' に設定
+    file_name = "tango.csv" 
+    
+    if not os.path.exists(file_name):
+        st.error(f"❌ '{file_name}' が見つかりません。")
         st.info("必要な列: カテゴリ, 分野, 単語, 説明, 午後記述での使用例, 使用理由／文脈, 試験区分, 出題確率（推定）, シラバス改定有無, 改定の意図・影響, 〇×結果")
         st.stop()
 
     try:
-        df = pd.read_csv("tango.csv", encoding='utf-8', header=0, delimiter=',')
+        # ここを修正: ファイル名を変更し、delimiterをタブに設定
+        df = pd.read_csv(file_name, encoding='utf-8', header=0, delimiter='\t')
     except UnicodeDecodeError:
         try:
-            df = pd.read_csv("tango.csv", encoding='utf_8_sig', header=0, delimiter=',')
+            # ここを修正: ファイル名を変更し、delimiterをタブに設定
+            df = pd.read_csv(file_name, encoding='utf_8_sig', header=0, delimiter='\t')
         except Exception as e:
-            st.error(f"❌ CSVファイルのエンコーディングを自動判別できませんでした。エラー: {e}")
-            st.info("CSVファイルがUTF-8 (BOMなし/あり) で保存されているか確認してください。")
+            st.error(f"❌ CSV/TSVファイルのエンコーディングを自動判別できませんでした。エラー: {e}")
+            st.info("ファイルがUTF-8 (BOMなし/あり) で保存されているか確認してください。")
             st.stop()
     
     required_columns = ["カテゴリ", "分野", "単語", "説明", "午後記述での使用例", "使用理由／文脈", "試験区分", "出題確率（推定）", "シラバス改定有無", "改定の意図・影響", "〇×結果"]
 
     if not all(col in df.columns for col in required_columns):
         missing_cols = [col for col in required_columns if col not in df.columns]
-        st.error(f"❌ 'tango.csv' に必要な列が不足しています。不足している列: {', '.join(missing_cols)}")
+        st.error(f"❌ '{file_name}' に必要な列が不足しています。不足している列: {', '.join(missing_cols)}")
         st.stop()
     
     app = QuizApp(df)
     app.run()
 except Exception as e:
     st.error(f"エラーが発生しました: {e}")
-    st.info("データファイル 'tango.csv' の内容を確認してください。列名やデータ形式が正しいか、CSVが破損していないか確認してください。")
+    st.info("データファイルの内容を確認してください。列名やデータ形式が正しいか、ファイルが破損していないか確認してください。")
