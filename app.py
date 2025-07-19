@@ -310,15 +310,19 @@ class QuizApp:
             }
             /* Selectbox styling */
             [data-testid="stSelectbox"] > div:first-child {
-                background-color: white;
+                background-color: white; /* 選択ボックスの表示部分を白に */
                 border-radius: 8px;
                 border: 1px solid #ddd;
             }
             /* For the dropdown options when opened */
             div[data-baseweb="select"] div[role="listbox"] {
-                background-color: white;
+                background-color: white; /* ドロップダウンリストの背景色を白に */
                 border-radius: 8px;
                 border: 1px solid #ddd;
+            }
+            /* Selectbox内のテキスト色を調整する場合 (必要であれば) */
+            [data-testid="stSelectbox"] div[data-baseweb="select"] span {
+                color: #333; /* またはお好みの色 */
             }
             </style>
             """, unsafe_allow_html=True)
