@@ -398,7 +398,16 @@ try:
         st.info("必要な列: カテゴリ, 分野, 単語, 説明, 午後記述での使用例, 使用理由／文脈, 試験区分, 出題確率（推定）, シラバス改定有無, 改定の意図・影響, 〇×結果")
         st.stop()
 
-    df = pd.read_csv("tango.csv")
+    # CSV読み込み部分 - ここが修正されました
+    try:
+        df = pd.read_csv("tango.csv", encoding='utf_8_sig')
+    except UnicodeDecodeError:
+        try:
+            df = pd.read_csv("tango.csv", encoding='shift_jis')
+        except Exception as e:
+            st.error(f"❌ CSVファイルのエンコーディングを自動判別できませんでした。エラー: {e}")
+            st.info("CSVファイルがUTF-8 (BOM付き) または Shift_JIS で保存されているか確認してください。")
+            st.stop()
     
     required_columns = ["カテゴリ", "分野", "単語", "説明", "午後記述での使用例", "使用理由／文脈", "試験区分", "出題確率（推定）", "シラバス改定有無", "改定の意図・影響", "〇×結果"]
 
