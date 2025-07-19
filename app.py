@@ -2,10 +2,10 @@ import streamlit as st
 import pandas as pd
 import random
 import os
+import plotly.express as px # グラフ描画用にPlotlyをインポート
 
 class QuizApp:
     def __init__(self, df: pd.DataFrame):
-        self.df = df # オリジナルDataFrameを保持
         self.kana_labels = ["ア", "イ", "ウ", "エ", "オ"]
         self.defaults = {
             "total": 0,
@@ -16,12 +16,37 @@ class QuizApp:
             "current_quiz": None,
             "quiz_answered": False,
             "quiz_choice_index": 0,
-            "history": []
+            "history": [],
+            "current_round": 1, 
+            "quiz_df": None 
         }
         self._initialize_session()
 
+        if st.session_state.quiz_df is None:
+            st.session_state.quiz_df = df.copy()
+            for i in range(1, 16):
+                col_name = str(i)
+                if col_name in st.session_state.quiz_df.columns:
+                    st.session_state.quiz_df[col_name] = st.session_state.quiz_df[col_name].astype(str).replace('nan', '')
+            
+            st.session_state.quiz_df['正解回数'] = 0
+            st.session_state.quiz_df['不正解回数'] = 0
+
+            for index, row in st.session_state.quiz_df.iterrows():
+                correct_count = 0
+                incorrect_count = 0
+                for i in range(1, 16):
+                    col_name = str(i)
+                    if col_name in row and row[col_name] == '〇':
+                        correct_count += 1
+                    elif col_name in row and row[col_name] == '×':
+                        incorrect_count += 1
+                st.session_state.quiz_df.at[index, '正解回数'] = correct_count
+                st.session_state.quiz_df.at[index, '不正解回数'] = incorrect_count
+                
+        self.initial_df = df.copy()
+
     def _initialize_session(self):
-        """セッション状態を初期化またはデフォルト値に設定します。"""
         for key, val in self.defaults.items():
             if key not in st.session_state:
                 st.session_state[key] = val
@@ -29,35 +54,48 @@ class QuizApp:
                 st.session_state[key] = set(st.session_state[key])
 
     def _reset_session_state(self):
-        """セッション状態をデフォルト値にリセットします。"""
+        st.session_state.quiz_df = self.initial_df.copy()
+        for i in range(1, 16):
+            col_name = str(i)
+            if col_name in st.session_state.quiz_df.columns:
+                st.session_state.quiz_df[col_name] = st.session_state.quiz_df[col_name].astype(str).replace('nan', '')
+        
+        st.session_state.quiz_df['正解回数'] = 0
+        st.session_state.quiz_df['不正解回数'] = 0
+
+        for index, row in st.session_state.quiz_df.iterrows():
+            correct_count = 0
+            incorrect_count = 0
+            for i in range(1, 16):
+                col_name = str(i)
+                if col_name in row and row[col_name] == '〇':
+                    correct_count += 1
+                elif col_name in row and row[col_name] == '×':
+                    incorrect_count += 1
+            st.session_state.quiz_df.at[index, '正解回数'] = correct_count
+            st.session_state.quiz_df.at[index, '不正解回数'] = incorrect_count
+
         for key, val in self.defaults.items():
-            st.session_state[key] = val if not isinstance(val, set) else set()
+            if key != "quiz_df":
+                st.session_state[key] = val if not isinstance(val, set) else set()
         st.success("✅ セッションをリセットしました")
         st.rerun()
 
     def filter_data(self):
-        """ユーザーの選択に基づいてデータをフィルタリングします。
-           ここではオリジナルのself.dfを使用します。"""
         current_category = st.session_state.get("filter_category", "すべて")
         current_field = st.session_state.get("filter_field", "すべて")
         current_level = st.session_state.get("filter_level", "すべて")
 
-        category_options = ["すべて"] + sorted(self.df["カテゴリ"].dropna().unique())
-        field_options = ["すべて"] + sorted(self.df["分野"].dropna().unique())
-        level_options = ["すべて"] + sorted(self.df["試験区分"].dropna().unique())
-
-        if current_category not in category_options:
-            current_category = "すべて"
-        if current_field not in field_options:
-            current_field = "すべて"
-        if current_level not in level_options:
-            current_level = "すべて"
+        category_options = ["すべて"] + sorted(st.session_state.quiz_df["カテゴリ"].dropna().unique())
+        field_options = ["すべて"] + sorted(st.session_state.quiz_df["分野"].dropna().unique())
+        level_options = ["すべて"] + sorted(st.session_state.quiz_df["試験区分"].dropna().unique())
 
         category = st.selectbox("カテゴリを選ぶ", category_options, index=category_options.index(current_category), key="filter_category")
         field = st.selectbox("分野を選ぶ", field_options, index=field_options.index(current_field), key="filter_field")
         level = st.selectbox("試験区分を選ぶ", level_options, index=level_options.index(current_level), key="filter_level")
 
-        df_filtered = self.df.copy() # オリジナルdfをコピーしてフィルタリング
+        # st.session_state.quiz_df をフィルタリング
+        df_filtered = st.session_state.quiz_df.copy()
         if category != "すべて":
             df_filtered = df_filtered[df_filtered["カテゴリ"] == category]
         if field != "すべて":
@@ -66,18 +104,24 @@ class QuizApp:
             df_filtered = df_filtered[df_filtered["試験区分"] == level]
 
         remaining = df_filtered[~df_filtered["単語"].isin(st.session_state.answered_words)]
+        
         return df_filtered, remaining
 
     def show_progress(self, df_filtered):
-        """現在の学習進捗を表示します。"""
         st.markdown(f"📊 **進捗：{len(st.session_state.answered_words)} / {len(df_filtered)} 語**")
         st.markdown(f"🔁 **総回答：{st.session_state.total} 回 / 🎯 正解：{st.session_state.correct} 回**")
-        # st.markdown(f"🗓️ **現在の実施回数更新列：{st.session_state.current_round}回目**") # 実施回数表示は削除
+        display_round = min(st.session_state.current_round, 15)
+        st.markdown(f"🗓️ **現在の記録列：{display_round}回目**")
 
     def load_quiz(self, df_filtered, remaining_df):
-        """新しいクイズをロードし、セッション状態を更新します。"""
         if len(remaining_df) > 0:
-            q = remaining_df.sample(1).iloc[0]
+            weights = (remaining_df['不正解回数'] + 1).tolist()
+            
+            if sum(weights) == 0:
+                q = remaining_df.sample(1).iloc[0]
+            else:
+                q = remaining_df.sample(weights=weights, n=1).iloc[0]
+
             correct_description = q["説明"]
 
             wrong_options_pool = df_filtered[df_filtered["説明"] != correct_description]["説明"].drop_duplicates().tolist()
@@ -106,7 +150,6 @@ class QuizApp:
             st.session_state.current_quiz = None
 
     def _display_quiz_question(self):
-        """クイズの質問と関連情報を表示します。"""
         q = st.session_state.current_quiz
         if not q:
             return
@@ -119,8 +162,6 @@ class QuizApp:
 
 
     def _handle_answer_submission(self, selected_option_text, current_quiz_data):
-        """ユーザーの回答を処理し、結果を更新します。
-           CSVへの〇×書き込みロジックはここから削除。"""
         st.session_state.total += 1
         st.session_state.answered_words.add(current_quiz_data["単語"])
 
@@ -135,9 +176,26 @@ class QuizApp:
         )
         st.session_state.correct += 1 if is_correct else 0
 
-        # --- 実施回数列の更新ロジックはここから削除されました ---
-        # dfへの〇×書き込みや current_round の更新は行いません。
-        # --- 実施回数列の更新ロジックここまで ---
+        temp_df = st.session_state.quiz_df.copy()
+        
+        word = current_quiz_data["単語"]
+        if word in temp_df["単語"].values:
+            idx = temp_df[temp_df["単語"] == word].index[0]
+            
+            column_to_update = str(min(st.session_state.current_round, 15))
+            if column_to_update in temp_df.columns:
+                temp_df.at[idx, column_to_update] = result_mark
+            else:
+                st.warning(f"警告: 列 '{column_to_update}' がDataFrameに見つかりません。CSVファイルを確認してください。")
+            
+            if is_correct:
+                temp_df.at[idx, '正解回数'] += 1
+            else:
+                temp_df.at[idx, '不正解回数'] += 1
+        
+        st.session_state.quiz_df = temp_df
+
+        st.session_state.current_round += 1
 
         try:
             choice_kana = self.kana_labels[current_quiz_data["選択肢"].index(selected_option_text)]
@@ -162,7 +220,6 @@ class QuizApp:
         st.session_state.quiz_answered = True
 
     def _display_result_and_next_button(self):
-        """回答結果と次の問題へのボタンを表示します。"""
         st.info(st.session_state.latest_result)
         st.markdown(f"💡 **説明:** {st.session_state.latest_correct_description}")
 
@@ -172,7 +229,6 @@ class QuizApp:
             st.rerun()
 
     def display_quiz(self, df_filtered, remaining_df):
-        """クイズの質問と選択肢を表示し、回答を処理します。"""
         q = st.session_state.current_quiz
         if not q:
             return
@@ -203,31 +259,128 @@ class QuizApp:
             self._display_result_and_next_button()
 
     def show_completion(self):
-        """すべての問題に回答した際のメッセージを表示します。"""
         st.success("🎉 すべての問題に回答しました！")
         st.balloons()
 
     def offer_download(self):
-        """学習履歴のCSVダウンロードボタンを提供します。
-           CSVファイルへの直接保存機能は削除。"""
-        # CSVファイルへの直接保存ボタンは削除されました。
-
-        # 回答履歴をCSVでダウンロードするボタン
+        csv_quiz_data = st.session_state.quiz_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+        st.download_button("📥 **現在の学習データをダウンロード** (〇×・統計含む)", data=csv_quiz_data, file_name="updated_tango_data_with_stats.csv", mime="text/csv")
+        
         df_log = pd.DataFrame(st.session_state.history or [])
         if not df_log.empty:
-            csv_history = df_log.to_csv(index=False).encode("utf-8-sig")
-            st.download_button("📥 回答履歴をCSVでダウンロード", data=csv_history, file_name="quiz_results.csv", mime="text/csv")
+            csv_history = df_log.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+            st.download_button("📥 回答履歴をダウンロード", data=csv_history, file_name="quiz_results.csv", mime="text/csv")
         else:
             st.info("まだ回答履歴がありません。")
 
     def reset_session_button(self):
-        """セッションをリセットするためのボタンを表示します。"""
         if st.button("🔁 セッションをリセット"):
             self._reset_session_state()
 
+    def display_statistics(self):
+        """学習統計情報を表示します。"""
+        st.subheader("💡 学習統計")
+
+        # 全体の正答率
+        if st.session_state.total > 0:
+            overall_accuracy = (st.session_state.correct / st.session_state.total) * 100
+            st.write(f"**全体正答率:** {overall_accuracy:.1f}% ({st.session_state.correct}/{st.session_state.total} 問)")
+        else:
+            st.write("**全体正答率:** まだ問題に回答していません。")
+
+        st.markdown("---")
+
+        # 苦手な単語トップ5
+        st.markdown("##### 😱 苦手な単語トップ5 (不正解回数が多い順)")
+        # フィルタリングされたデータの中から、かつ回答済みの単語のみを対象に統計をとる
+        # quiz_df はフィルタリング前の全体のデータを持つので、回答済みの単語に絞る
+        answered_df = st.session_state.quiz_df[st.session_state.quiz_df["単語"].isin(st.session_state.answered_words)].copy()
+
+        if not answered_df.empty:
+            # 不正解回数が0の単語は除外するか、下位に表示されるようにする
+            # ここでは不正解回数が1以上のものを対象にするか、または0でも含めてランキング
+            top_5_difficult = answered_df.sort_values(by='不正解回数', ascending=False).head(5)
+            
+            if not top_5_difficult.empty:
+                for idx, row in top_5_difficult.iterrows():
+                    total_attempts = row['正解回数'] + row['不正解回数']
+                    if total_attempts > 0:
+                        accuracy = (row['正解回数'] / total_attempts) * 100
+                        st.write(f"**{row['単語']}**: 不正解 {row['不正解回数']}回 / 正解 {row['正解回数']}回 (正答率: {accuracy:.1f}%)")
+                    else:
+                        st.write(f"**{row['単語']}**: まだ回答していません。")
+            else:
+                st.info("まだ苦手な単語はありません。")
+        else:
+            st.info("まだ回答した単語がありません。")
+
+        st.markdown("---")
+
+        # カテゴリ別・分野別の正答率
+        st.markdown("##### 📈 カテゴリ別 / 分野別 正答率")
+        
+        # まず合計回数を計算し、分母が0になることを避ける
+        stats_df = st.session_state.quiz_df.copy()
+        stats_df['合計回答回数'] = stats_df['正解回数'] + stats_df['不正解回数']
+        
+        # カテゴリ別
+        category_stats = stats_df.groupby("カテゴリ").agg(
+            total_correct=('正解回数', 'sum'),
+            total_incorrect=('不正解回数', 'sum'),
+            total_attempts=('合計回答回数', 'sum')
+        ).reset_index()
+        category_stats['正答率'] = category_stats.apply(lambda row: (row['total_correct'] / row['total_attempts'] * 100) if row['total_attempts'] > 0 else 0, axis=1)
+        
+        # 回答数があるカテゴリのみ表示
+        category_stats_filtered = category_stats[category_stats['total_attempts'] > 0].sort_values(by='正答率', ascending=True)
+
+        if not category_stats_filtered.empty:
+            st.write("###### カテゴリ別")
+            fig_category = px.bar(
+                category_stats_filtered, 
+                x='カテゴリ', 
+                y='正答率', 
+                color='正答率', 
+                color_continuous_scale=px.colors.sequential.Viridis,
+                title='カテゴリ別 正答率',
+                labels={'正答率': '正答率 (%)'},
+                text_auto='.1f' # グラフに値を直接表示
+            )
+            fig_category.update_layout(xaxis_title="カテゴリ", yaxis_title="正答率 (%)")
+            st.plotly_chart(fig_category, use_container_width=True)
+        else:
+            st.info("まだカテゴリ別の回答がありません。")
+
+        # 分野別
+        field_stats = stats_df.groupby("分野").agg(
+            total_correct=('正解回数', 'sum'),
+            total_incorrect=('不正解回数', 'sum'),
+            total_attempts=('合計回答回数', 'sum')
+        ).reset_index()
+        field_stats['正答率'] = field_stats.apply(lambda row: (row['total_correct'] / row['total_attempts'] * 100) if row['total_attempts'] > 0 else 0, axis=1)
+
+        # 回答数がある分野のみ表示
+        field_stats_filtered = field_stats[field_stats['total_attempts'] > 0].sort_values(by='正答率', ascending=True)
+
+        if not field_stats_filtered.empty:
+            st.write("###### 分野別")
+            fig_field = px.bar(
+                field_stats_filtered, 
+                x='分野', 
+                y='正答率', 
+                color='正答率', 
+                color_continuous_scale=px.colors.sequential.Viridis,
+                title='分野別 正答率',
+                labels={'正答率': '正答率 (%)'},
+                text_auto='.1f'
+            )
+            fig_field.update_layout(xaxis_title="分野", yaxis_title="正答率 (%)")
+            st.plotly_chart(fig_field, use_container_width=True)
+        else:
+            st.info("まだ分野別の回答がありません。")
+
 
     def run(self):
-        """アプリケーションのメイン実行ロジックです。"""
         st.set_page_config(layout="wide", page_title="用語クイズアプリ")
 
         st.markdown("""
@@ -327,8 +480,12 @@ class QuizApp:
         df_filtered, remaining_df = self.filter_data()
         self.show_progress(df_filtered)
 
+        # 統計表示を展開可能なセクションに格納
+        with st.expander("📊 学習統計を表示"):
+            self.display_statistics()
+
         with st.expander("📂 読み込みデータの確認"):
-            st.dataframe(self.df.head()) # オリジナルdfの先頭を表示
+            st.dataframe(st.session_state.quiz_df.head()) # quiz_dfの現在の状態を表示
 
         if st.session_state.current_quiz is None and len(remaining_df) > 0:
             self.load_quiz(df_filtered, remaining_df)
@@ -351,17 +508,3 @@ try:
         st.stop()
 
     df = pd.read_csv("tango.csv")
-    
-    required_columns = ["カテゴリ", "分野", "単語", "説明", "午後記述での使用例", "使用理由／文脈", "試験区分", "出題確率（推定）", "シラバス改定有無", "改定の意図・影響"]
-    for i in range(1, 16):
-        required_columns.append(str(i))
-
-    if not all(col in df.columns for col in required_columns):
-        st.error(f"❌ 'tango.csv' に必要な列が不足しています。不足している列: {', '.join([col for col in required_columns if col not in df.columns])}")
-        st.stop()
-    
-    app = QuizApp(df)
-    app.run()
-except Exception as e:
-    st.error(f"エラーが発生しました: {e}")
-    st.info("データファイル 'tango.csv' の内容を確認してください。")
