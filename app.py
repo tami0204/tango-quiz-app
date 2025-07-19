@@ -79,7 +79,10 @@ class QuizApp:
                 "選択肢": options,
                 "記述": q.get("午後記述での使用例", "N/A"),
                 "文脈": q.get("使用理由／文脈", "N/A"),
-                "区分": q.get("試験区分", "N/A")
+                "区分": q.get("試験区分", "N/A"),
+                "出題確率（推定）": q.get("出題確率（推定）", "N/A"), # 新しい列を追加
+                "シラバス改定有無": q.get("シラバス改定有無", "N/A"),   # 新しい列を追加
+                "改定の意図・影響": q.get("改定の意図・影響", "N/A")    # 新しい列を追加
             }
             st.session_state.quiz_answered = False
             st.session_state.quiz_choice_index = 0 # 新しいクイズでは最初の選択肢をデフォルトに
@@ -96,6 +99,11 @@ class QuizApp:
         st.markdown(f"🧩 **午後記述での使用例：** {q['記述']}")
         st.markdown(f"🎯 **使用理由／文脈：** {q['文脈']}")
         st.markdown(f"🕘 **試験区分：** {q['区分']}")
+        # 新しい列の表示を追加
+        st.markdown(f"📈 **出題確率（推定）：** {q['出題確率（推定）']}")
+        st.markdown(f"🔄 **シラバス改定有無：** {q['シラバス改定有無']}")
+        st.markdown(f"📝 **改定の意図・影響：** {q['改定の意図・影響']}")
+
 
     def _handle_answer_submission(self, selected_option_text, current_quiz_data):
         """ユーザーの回答を処理し、結果を更新します。"""
@@ -252,6 +260,18 @@ class QuizApp:
                 padding: 15px;
                 margin-top: 20px;
                 border: 1px solid #ef9a9a;
+            }
+            /* Selectbox styling */
+            [data-testid="stSelectbox"] > div:first-child {
+                background-color: white;
+                border-radius: 8px;
+                border: 1px solid #ddd;
+            }
+            /* For the dropdown options when opened */
+            div[data-baseweb="select"] div[role="listbox"] {
+                background-color: white;
+                border-radius: 8px;
+                border: 1px solid #ddd;
             }
             </style>
             """, unsafe_allow_html=True)
