@@ -113,9 +113,9 @@ class QuizApp:
         st.markdown(f"🧩 **午後記述での使用例：** {q['記述']}")
         st.markdown(f"🎯 **使用理由／文脈：** {q['文脈']}")
         st.markdown(f"🕘 **試験区分：** {q['区分']}")
-        st.markdown(f"📈 **出題確率（推定）：** {q['出題確率（推定）']}")
-        st.markdown(f"🔄 **シラバス改定有無：** {q['シラバス改定有無']}")
-        st.markdown(f"📝 **改定の意図・影響：** {q['改定の意図・影響']}")
+        # 以下の3行を1行にまとめる
+        st.markdown(f"📈 **出題確率（推定）：** {q['出題確率（推定）']}　🔄 **シラバス改定有無：** {q['シラバス改定有無']}　📝 **改定の意図・影響：** {q['改定の意図・影響']}")
+
 
     def _handle_answer_submission(self, selected_option_text, current_quiz_data):
         """ユーザーの回答を処理し、結果を更新します。"""
@@ -290,7 +290,7 @@ class QuizApp:
             /* Selectbox styling: The main display area of the selectbox */
             div[data-baseweb="select"] > div:first-child {
                 background-color: white !important;
-                border: 1px solid #999 !important; /* 枠線を追加 */
+                border: 1px solid #999 !important; /* ここで枠線を追加 */
                 border-radius: 8px;
             }
             /* Selectbox styling: The dropdown list */
