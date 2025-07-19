@@ -208,24 +208,19 @@ class QuizApp:
             st.session_state.quiz_choice_index = selected_option_index
 
         if not st.session_state.quiz_answered:
-            # --- 答え合わせボタンとGeminiアイコンを横並びにする変更 ---
-            col1, col2 = st.columns([0.1, 0.9]) # ボタンの幅を狭く、アイコンの幅を広く調整
-            with col1:
-                if st.button("✅ 答え合わせ"):
-                    self._handle_answer_submission(selected_option_text, q)
-                    st.rerun()
-            with col2:
-                # CSSで左に5cm（約190px）ずらす
-                # top: 15px; で垂直方向の位置も微調整しています。
-                st.markdown(
-                    f'<div style="position: relative; left: 190px; top: 15px;">'
-                    f'<a href="https://gemini.google.com/" target="_blank">'
-                    f'<img src="https://www.gstatic.com/lamda/images/gemini_logo_lockup_eval_ja_og.svg" alt="Geminiに質問する" width="50">'
-                    f'</a>'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
-            # --- 変更ここまで ---
+            # 答え合わせボタン
+            if st.button("✅ 答え合わせ"):
+                self._handle_answer_submission(selected_option_text, q)
+                st.rerun()
+            # 「答え合わせ」ボタンの下にGeminiアイコンを配置
+            st.markdown(
+                f'<div style="text-align: left; margin-top: 10px;">' # ボタンとの間隔を調整
+                f'<a href="https://gemini.google.com/" target="_blank">'
+                f'<img src="https://www.gstatic.com/lamda/images/gemini_logo_lockup_eval_ja_og.svg" alt="Geminiに質問する" width="50">'
+                f'</a>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
         else:
             self._display_result_and_next_button()
 
@@ -361,14 +356,14 @@ class QuizApp:
 
         st.title("用語クイズアプリ")
 
-        # --- アプリタイトル横のGeminiアイコン ---
-        st.markdown(
-            f'<a href="https://gemini.google.com/" target="_blank">'
-            f'<img src="https://www.gstatic.com/lamda/images/gemini_logo_lockup_eval_ja_og.svg" alt="Geminiに質問する" width="50" style="float:right; margin-right:20px;">'
-            f'</a>',
-            unsafe_allow_html=True
-        )
-        # --- ここまで ---
+        # --- 上部のジェミニアイコンを削除しました ---
+        # st.markdown(
+        #     f'<a href="https://gemini.google.com/" target="_blank">'
+        #     f'<img src="https://www.gstatic.com/lamda/images/gemini_logo_lockup_eval_ja_og.svg" alt="Geminiに質問する" width="50" style="float:right; margin-right:20px;">'
+        #     f'</a>',
+        #     unsafe_allow_html=True
+        # )
+        # --- ここまで削除 ---
 
         df_filtered, remaining_df = self.filter_data()
         self.show_progress(df_filtered)
@@ -387,7 +382,7 @@ class QuizApp:
         elif st.session_state.current_quiz:
             self.display_quiz(df_filtered, remaining_df)
 
-        self.offer_download()
+        self.offer_download() # CSVダウンロードボタン
         st.markdown("---")
         self.reset_session_button()
 
