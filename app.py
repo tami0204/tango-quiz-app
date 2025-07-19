@@ -124,7 +124,7 @@ class QuizApp:
         st.markdown(f"🕘 **試験区分：** {q['区分']}")
         # 新しい列の表示を追加
         st.markdown(f"📈 **出題確率（推定）：** {q['出題確率（推定）']}")
-        st.markdown(f"🔄 **シラバス改定有無：** {q['シラバス改定有無']}")
+        st.markdown(f"🔄 **シラバス改定有無：：** {q['シラバス改定有無']}")
         st.markdown(f"📝 **改定の意図・影響：** {q['改定の意図・影響']}")
 
 
@@ -308,11 +308,13 @@ class QuizApp:
                 margin-top: 20px;
                 border: 1px solid #ef9a9a;
             }
-            /* Selectbox styling */
-            [data-testid="stSelectbox"] > div:first-child {
-                background-color: white; /* 選択ボックスの表示部分を白に */
-                border-radius: 8px;
-                border: 1px solid #ddd;
+            /* Selectbox styling - Currently selected value display area */
+            [data-testid="stSelectbox"] > div:first-child > div:first-child {
+                background-color: white !important; /* 現在の選択値が表示される部分を白に */
+            }
+            /* Selectbox styling - Dropdown arrow container */
+            [data-testid="stSelectbox"] div[data-baseweb="select"] div[role="button"] {
+                background-color: white !important; /* ドロップダウンの矢印がある部分の背景も白に */
             }
             /* For the dropdown options when opened */
             div[data-baseweb="select"] div[role="listbox"] {
