@@ -70,11 +70,23 @@ class QuizApp:
         current_level = st.session_state.get("filter_level", "すべて")
 
         category_options = ["すべて"] + sorted(st.session_state.quiz_df["カテゴリ"].dropna().unique())
-        field_options = ["すべて"] + sorted(st.session_state.quiz_df["分野"].dropna().unique())
-        level_options = ["すべて"] + sorted(st.session_state.quiz_df["試験区分"].dropna().unique())
-
         category = st.selectbox("カテゴリを選ぶ", category_options, index=category_options.index(current_category), key="filter_category")
+
+        # カテゴリに基づいて分野の選択肢を絞り込む
+        if category != "すべて":
+            filtered_df_for_field = st.session_state.quiz_df[st.session_state.quiz_df["カテゴリ"] == category]
+            field_options = ["すべて"] + sorted(filtered_df_for_field["分野"].dropna().unique())
+        else:
+            field_options = ["すべて"] + sorted(st.session_state.quiz_df["分野"].dropna().unique())
+
+        # 現在の分野が新しい選択肢に存在しない場合、'すべて'にリセット
+        if current_field not in field_options:
+            current_field = "すべて"
+            st.session_state["filter_field"] = "すべて" # セッションステートも更新
+
         field = st.selectbox("分野を選ぶ", field_options, index=field_options.index(current_field), key="filter_field")
+        
+        level_options = ["すべて"] + sorted(st.session_state.quiz_df["試験区分"].dropna().unique())
         level = st.selectbox("試験区分を選ぶ", level_options, index=level_options.index(current_level), key="filter_level")
 
         df_filtered = st.session_state.quiz_df.copy()
@@ -175,7 +187,7 @@ class QuizApp:
                 temp_df.at[idx, '正解回数'] += 1
             else:
                 temp_df.at[idx, '不正解回数'] += 1
-        
+            
         st.session_state.quiz_df = temp_df
 
         st.session_state.quiz_answered = True
