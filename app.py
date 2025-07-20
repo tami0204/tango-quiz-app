@@ -71,23 +71,30 @@ class QuizApp:
 
         # カテゴリの選択
         category_options = ["すべて"] + sorted(df_base["カテゴリ"].dropna().unique())
-        current_category = st.session_state.get("filter_category", "すべて")
-        category_index = category_options.index(current_category) if current_category in category_options else 0
+        prev_category = st.session_state.get("filter_category", "すべて")
+        category_index = category_options.index(prev_category) if prev_category in category_options else 0
         
-        category = st.selectbox("カテゴリを選ぶ", category_options, index=category_index, key="filter_category")
+        # on_changeコールバックを定義
+        def on_category_change():
+            if st.session_state["filter_category"] != prev_category:
+                self._on_filter_change()
+
+        category = st.selectbox("カテゴリを選ぶ", category_options, index=category_index, key="filter_category", on_change=on_category_change)
 
         df_filtered_by_category = df_base.copy()
         if category != "すべて":
             df_filtered_by_category = df_base[df_base["カテゴリ"] == category]
 
         # 分野の選択 (カテゴリ選択に基づいて絞り込む)
-        # フィルタリングされたデータフレームから分野のユニークな値を取得
         field_options = ["すべて"] + sorted(df_filtered_by_category["分野"].dropna().unique())
-        current_field = st.session_state.get("filter_field", "すべて")
-        # 現在の選択が新しいオプションリストに含まれていない場合は「すべて」にリセット
-        field_index = field_options.index(current_field) if current_field in field_options else 0
+        prev_field = st.session_state.get("filter_field", "すべて")
+        field_index = field_options.index(prev_field) if prev_field in field_options else 0
 
-        field = st.selectbox("分野を選ぶ", field_options, index=field_index, key="filter_field")
+        def on_field_change():
+            if st.session_state["filter_field"] != prev_field:
+                self._on_filter_change()
+
+        field = st.selectbox("分野を選ぶ", field_options, index=field_index, key="filter_field", on_change=on_field_change)
 
         # 試験区分の選択 (カテゴリと分野の選択に基づいて絞り込む)
         df_filtered_by_field = df_filtered_by_category.copy()
@@ -95,10 +102,14 @@ class QuizApp:
             df_filtered_by_field = df_filtered_by_category[df_filtered_by_category["分野"] == field]
 
         level_options = ["すべて"] + sorted(df_filtered_by_field["試験区分"].dropna().unique())
-        current_level = st.session_state.get("filter_level", "すべて")
-        level_index = level_options.index(current_level) if current_level in level_options else 0
+        prev_level = st.session_state.get("filter_level", "すべて")
+        level_index = level_options.index(prev_level) if prev_level in level_options else 0
         
-        level = st.selectbox("試験区分を選ぶ", level_options, index=level_index, key="filter_level")
+        def on_level_change():
+            if st.session_state["filter_level"] != prev_level:
+                self._on_filter_change()
+
+        level = st.selectbox("試験区分を選ぶ", level_options, index=level_index, key="filter_level", on_change=on_level_change)
 
         df_final_filtered = df_filtered_by_field.copy()
         if level != "すべて":
@@ -108,10 +119,29 @@ class QuizApp:
         
         return df_final_filtered, remaining
 
+    def _on_filter_change(self):
+        """フィルター選択が変更されたときに呼び出されるハンドラ。クイズと現在の進捗をリセットし、再描画をトリガーします。"""
+        st.session_state.current_quiz = None
+        # フィルター変更時は、そのフィルターでの学習を最初からやり直すため、進捗もリセット
+        st.session_state.answered_words = set() 
+        st.session_state.total = 0
+        st.session_state.correct = 0
+        st.session_state.latest_result = ""
+        st.session_state.latest_correct_description = ""
+        st.session_state.quiz_answered = False
+        st.session_state.quiz_choice_index = 0
+        st.rerun() # 明示的に再描画を指示
+
     def show_progress(self, df_filtered):
         """現在の学習進捗（回答数、正解数）を表示します。"""
-        st.markdown(f"📊 **進捗：{len(st.session_state.answered_words)} / {len(df_filtered)} 語**")
-        st.markdown(f"🔁 **総回答：{st.session_state.total} 回 / 🎯 正解：{st.session_state.correct} 回**")
+        # _on_filter_changeでanswered_wordsをリセットするようにしたので、
+        # ここではセッション全体のtotal/correctではなく、現在のフィルター範囲での進捗をカウントするのが適切
+        answered_in_filter = df_filtered[df_filtered["単語"].isin(st.session_state.answered_words)]
+        
+        # フィルター内で回答した単語のみをカウントし、総回答数と正解数もフィルター内のものに絞る
+        # (セッションステートのtotal/correctはフィルター変更でリセットされるため、そのまま使用)
+        st.markdown(f"📊 **進捗：{len(answered_in_filter)} / {len(df_filtered)} 語**")
+        st.markdown(f"🔁 **総回答 (現フィルター内)：{st.session_state.total} 回 / 🎯 正解 (現フィルター内)：{st.session_state.correct} 回**")
         
     def load_quiz(self, df_filtered: pd.DataFrame, remaining_df: pd.DataFrame):
         """新しいクイズをロードし、セッション状態を更新します。不正解回数に基づいて出題します。"""
@@ -156,7 +186,7 @@ class QuizApp:
             st.session_state.current_quiz = None
 
     def _display_quiz_question(self):
-        """クイズの質問と関連情報を表示します。""" # ここが問題の行（219行目）と一致するはずです。
+        """クイズの質問と関連情報を表示します。"""
         q = st.session_state.current_quiz
         if not q:
             return
@@ -169,7 +199,7 @@ class QuizApp:
 
     def _handle_answer_submission(self, selected_option_text: str, current_quiz_data: dict):
         """ユーザーの回答を処理し、結果を更新します。"""
-        st.session_state.total += 1
+        st.session_state.total += 1 
         st.session_state.answered_words.add(current_quiz_data["単語"])
 
         is_correct = (selected_option_text == current_quiz_data["説明"])
@@ -181,7 +211,7 @@ class QuizApp:
             "✅ 正解！🎉" if is_correct
             else f"❌ 不正解…"
         )
-        st.session_state.correct += 1 if is_correct else 0
+        st.session_state.correct += 1 if is_correct else 0 
 
         temp_df = st.session_state.quiz_df.copy()
         
@@ -208,6 +238,7 @@ class QuizApp:
         if st.button("➡️ 次の問題へ"):
             st.session_state.current_quiz = None
             st.session_state.quiz_answered = False
+            # 次の問題をロードするためにst.rerun()を呼び出す
             st.rerun()
 
     def display_quiz(self, df_filtered: pd.DataFrame, remaining_df: pd.DataFrame):
@@ -267,11 +298,15 @@ class QuizApp:
 
     def display_statistics(self):
         """学習統計情報（全体の正答率、苦手な単語トップ5、カテゴリ別/分野別正答率グラフ）を表示します。"""
-        st.subheader("💡 学習統計")
+        st.subheader("💡 学習統計（全データ対象）") # 「全データ対象」であることを明記
 
-        if st.session_state.total > 0:
-            overall_accuracy = (st.session_state.correct / st.session_state.total) * 100
-            st.write(f"**全体正答率:** {overall_accuracy:.1f}% ({st.session_state.correct}/{st.session_state.total} 問)")
+        # 全体の正答率は、フィルターに関わらず全回答履歴から計算
+        total_attempts_overall = st.session_state.quiz_df['正解回数'].sum() + st.session_state.quiz_df['不正解回数'].sum()
+        correct_overall = st.session_state.quiz_df['正解回数'].sum()
+
+        if total_attempts_overall > 0:
+            overall_accuracy = (correct_overall / total_attempts_overall) * 100
+            st.write(f"**全体正答率:** {overall_accuracy:.1f}% ({correct_overall}/{total_attempts_overall} 問)")
         else:
             st.write("**全体正答率:** まだ問題に回答していません。")
 
@@ -386,6 +421,7 @@ class QuizApp:
 
         st.title("用語クイズアプリ")
 
+        # filter_dataの戻り値を直接利用
         df_filtered, remaining_df = self.filter_data()
         self.show_progress(df_filtered)
 
@@ -395,6 +431,7 @@ class QuizApp:
         with st.expander("📂 **読み込みデータの確認**"):
             st.dataframe(st.session_state.quiz_df.head())
 
+        # load_quizにフィルタリングされたDataFrameと未回答のDataFrameを渡す
         if st.session_state.current_quiz is None and not remaining_df.empty:
             self.load_quiz(df_filtered, remaining_df)
 
