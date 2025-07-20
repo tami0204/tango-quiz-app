@@ -1,142 +1,142 @@
 import streamlit as st
+import pandas as pd
+import random
 import os
-import sys
-import platform
-import subprocess
-import logging
-import datetime
-import importlib.metadata # Python 3.8+ for package versions
+import plotly.express as px
 
-# --- ロギング設定 (Streamlit CloudのLogsに出力されます) ---
-# アプリケーションのログレベルをDEBUGに設定
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+class QuizApp:
+    def __init__(self, df: pd.DataFrame):
+        self.kana_labels = ["ア", "イ", "ウ", "エ", "オ"]
+        self.defaults = {
+            "total": 0, # 総回答数
+            "correct": 0, # 総正解数
+            "answered_words": set(), # 回答済みの単語（このセッションで一度でも回答した単語）
+            "latest_result": "", # 最新の回答結果メッセージ
+            "latest_correct_description": "", # 最新の正解の説明
+            "current_quiz": None, # 現在出題中のクイズデータ
+            "quiz_answered": False, # 現在のクイズが回答済みかどうかのフラグ
+            "quiz_choice_index": 0, # 選択肢のラジオボタンの初期選択インデックス
+            "quiz_df": None # 更新されたクイズデータを保持するDataFrame
+        }
+        self._initialize_session()
 
-logger.info("--- Streamlit Debug App Started ---")
-
-# --- UI上へのデバッグ情報出力 ---
-st.set_page_config(layout="wide", page_title="デバッグ情報アプリ")
-
-st.title("🚀 Streamlit デプロイ デバッグ情報")
-st.write("このアプリは、デプロイ環境での問題を診断するための情報を提供します。")
-st.write("---")
-
-st.header("1. 環境変数 (Env Vars)")
-st.info("⚠ 重要: 機密情報はst.secrets['key']で安全に管理してください。ここでは環境変数の一部のみ表示します。")
-if st.checkbox("環境変数を表示"):
-    env_vars = os.environ
-    for key, value in env_vars.items():
-        # 機密性の高い情報を表示しないようにフィルタリング
-        if any(secret_word in key.lower() for secret_word in ["key", "password", "token", "secret", "cred"]):
-            st.write(f"**{key}**: *********")
-        else:
-            st.write(f"**{key}**: {value}")
-
-st.write("---")
-
-st.header("2. Python 環境情報")
-st.write(f"**Python バージョン**: {sys.version}")
-st.write(f"**Python 実行可能パス**: {sys.executable}")
-st.write(f"**プラットフォーム**: {platform.platform()}")
-st.write(f"**現在の作業ディレクトリ**: {os.getcwd()}")
-st.write(f"**Python パス (sys.path)**:")
-for p in sys.path:
-    st.write(f"- `{p}`")
-
-st.write("---")
-
-st.header("3. インストール済みパッケージ")
-st.info("特に 'streamlit' や 'requirements.txt' に記載したパッケージのバージョンを確認してください。")
-if st.checkbox("インストール済みパッケージ一覧を表示"):
-    try:
-        # pip freeze の代わりに importlib.metadata を使用 (よりプログラム的)
-        installed_packages = {dist.name: dist.version for dist in importlib.metadata.distributions()}
-        for pkg, ver in sorted(installed_packages.items()):
-            st.write(f"- `{pkg}=={ver}`")
-        logger.info("Successfully listed installed packages.")
-    except Exception as e:
-        st.error(f"パッケージ一覧の取得中にエラーが発生しました: {e}")
-        logger.error(f"Failed to list packages: {e}")
-    
-    # 伝統的な pip freeze --local も試す (subprocess 実行)
-    st.subheader("`pip freeze --local` の出力 (参考)")
-    try:
-        pip_freeze_output = subprocess.check_output([sys.executable, "-m", "pip", "freeze", "--local"]).decode("utf-8")
-        st.code(pip_freeze_output)
-        logger.info("Successfully executed 'pip freeze --local'.")
-    except Exception as e:
-        st.error(f"pip freeze の実行中にエラーが発生しました: {e}")
-        logger.error(f"Failed to execute 'pip freeze --local': {e}")
-
-
-st.write("---")
-
-st.header("4. ファイルシステムの内容 (重要)")
-st.warning("このセクションでファイルが見つからない場合、パスの問題が疑われます。")
-st.write(f"**アプリの実行パス**: `{os.path.dirname(__file__)}`") # スクリプト自身のディレクトリ
-
-# リポジトリのルート (通常は /mount/src/your-repo-name) を確認
-repo_root = "/mount/src/" + os.path.basename(os.getcwd()) # あるいは os.path.dirname(os.path.abspath(__file__))
-
-st.write(f"**推定されるリポジトリのルート**: `{repo_root}`")
-
-# 特定のディレクトリの内容を表示する関数
-def list_directory_contents(path):
-    st.subheader(f"ディレクトリ `{path}` の内容:")
-    try:
-        if not os.path.exists(path):
-            st.error(f"パス '{path}' は存在しません。")
-            logger.warning(f"Path does not exist: {path}")
-            return
-        
-        contents = os.listdir(path)
-        if not contents:
-            st.write("(このディレクトリは空です)")
-            logger.info(f"Directory {path} is empty.")
-        for item in contents:
-            full_path = os.path.join(path, item)
-            if os.path.isdir(full_path):
-                st.write(f"- 📂 `{item}/`")
+        if st.session_state.quiz_df is None:
+            st.session_state.quiz_df = df.copy()
+            
+            # '〇×結果' 列の初期化とNaNの置換
+            if '〇×結果' not in st.session_state.quiz_df.columns:
+                st.session_state.quiz_df['〇×結果'] = ''
             else:
-                st.write(f"- 📄 `{item}`")
-        logger.info(f"Successfully listed contents of {path}.")
-    except Exception as e:
-        st.error(f"ディレクトリの内容を読み取る際にエラーが発生しました: {e}")
-        logger.error(f"Error listing directory contents for {path}: {e}")
+                st.session_state.quiz_df['〇×結果'] = st.session_state.quiz_df['〇×結果'].astype(str).replace('nan', '')
 
-# 確認したいパスをここに追加
-list_directory_contents(repo_root) # リポジトリのルート
-list_directory_contents(os.path.join(repo_root, 'data')) # もし 'data' フォルダがある場合
-# list_directory_contents('/tmp') # 一時ファイルを確認する場合など
+            # '正解回数' '不正解回数' 列の初期化
+            if '正解回数' not in st.session_state.quiz_df.columns:
+                st.session_state.quiz_df['正解回数'] = 0
+            if '不正解回数' not in st.session_state.quiz_df.columns:
+                st.session_state.quiz_df['不正解回数'] = 0
+                
+        self.initial_df = df.copy() 
 
-st.write("---")
+    def _initialize_session(self):
+        """Streamlitのセッション状態を初期化またはデフォルト値に設定します。"""
+        for key, val in self.defaults.items():
+            if key not in st.session_state:
+                st.session_state[key] = val
+            if key == "answered_words" and not isinstance(st.session_state[key], set):
+                st.session_state[key] = set(st.session_state[key])
 
-st.header("5. 現在時刻")
-st.write(f"アプリ実行時の現在時刻: {datetime.datetime.now()}")
+    def _reset_session_state(self):
+        """セッション状態をデフォルト値にリセットします。"""
+        st.session_state.quiz_df = self.initial_df.copy()
+        
+        if '〇×結果' not in st.session_state.quiz_df.columns:
+            st.session_state.quiz_df['〇×結果'] = ''
+        else:
+            st.session_state.quiz_df['〇×結果'] = st.session_state.quiz_df['〇×結果'].astype(str).replace('nan', '')
 
-st.write("---")
+        st.session_state.quiz_df['正解回数'] = 0
+        st.session_state.quiz_df['不正解回数'] = 0
 
-st.header("6. カスタムコードチェック (例)")
-# ここにあなたの元のアプリの特定のコードスニペットをコピー＆ペーストして、
-# エラーが出ないか確認するデバッグブロックを記述します。
-# 例: データファイルの読み込み
-try:
-    # 例: もし 'data' フォルダに 'my_quiz_data.csv' があるなら
-    # import pandas as pd
-    # df = pd.read_csv(os.path.join(repo_root, 'data', 'my_quiz_data.csv'))
-    # st.success(f"データファイル 'my_quiz_data.csv' を正常に読み込みました。行数: {len(df)}")
-    # logger.info("Data file loaded successfully.")
-    st.info("ここにあなたのコードの一部を貼り付けてテストできます。")
-except FileNotFoundError:
-    st.error("データファイルが見つかりません。ファイルパスを確認してください。")
-    logger.error("Data file not found error.")
-except Exception as e:
-    st.error(f"カスタムコード実行中にエラーが発生しました: {e}")
-    logger.error(f"Error in custom code execution: {e}")
+        for key, val in self.defaults.items():
+            if key != "quiz_df":
+                st.session_state[key] = val if not isinstance(val, set) else set()
+        st.success("✅ セッションをリセットしました")
+        st.rerun()
 
-logger.info("--- Streamlit Debug App Finished ---")
+    def filter_data(self):
+        """ユーザーの選択に基づいてデータをフィルタリングし、Streamlitのselectboxを更新します。
+        カテゴリ選択に基づいて分野の選択肢を絞り込みます。
+        """
+        df_base = st.session_state.quiz_df.copy()
 
-# --- アプリのクラッシュテスト (オプション) ---
-# st.button("アプリを意図的にクラッシュさせる (ログを確認)")
-# if st.button("クラッシュテスト"):
-#     raise Exception("これは意図的なクラッシュです。ログに表示されるか確認してください。")
+        # カテゴリの選択
+        category_options = ["すべて"] + sorted(df_base["カテゴリ"].dropna().unique())
+        current_category = st.session_state.get("filter_category", "すべて")
+        category_index = category_options.index(current_category) if current_category in category_options else 0
+        
+        category = st.selectbox("カテゴリを選ぶ", category_options, index=category_index, key="filter_category")
+
+        df_filtered_by_category = df_base.copy()
+        if category != "すべて":
+            df_filtered_by_category = df_base[df_base["カテゴリ"] == category]
+
+        # 分野の選択 (カテゴリ選択に基づいて絞り込む)
+        # フィルタリングされたデータフレームから分野のユニークな値を取得
+        field_options = ["すべて"] + sorted(df_filtered_by_category["分野"].dropna().unique())
+        current_field = st.session_state.get("filter_field", "すべて")
+        # 現在の選択が新しいオプションリストに含まれていない場合は「すべて」にリセット
+        field_index = field_options.index(current_field) if current_field in field_options else 0
+
+        field = st.selectbox("分野を選ぶ", field_options, index=field_index, key="filter_field")
+
+        # 試験区分の選択 (カテゴリと分野の選択に基づいて絞り込む)
+        df_filtered_by_field = df_filtered_by_category.copy()
+        if field != "すべて":
+            df_filtered_by_field = df_filtered_by_category[df_filtered_by_category["分野"] == field]
+
+        level_options = ["すべて"] + sorted(df_filtered_by_field["試験区分"].dropna().unique())
+        current_level = st.session_state.get("filter_level", "すべて")
+        level_index = level_options.index(current_level) if current_level in level_options else 0
+        
+        level = st.selectbox("試験区分を選ぶ", level_options, index=level_index, key="filter_level")
+
+        df_final_filtered = df_filtered_by_field.copy()
+        if level != "すべて":
+            df_final_filtered = df_filtered_by_field[df_filtered_by_field["試験区分"] == level]
+
+        remaining = df_final_filtered[~df_final_filtered["単語"].isin(st.session_state.answered_words)]
+        
+        return df_final_filtered, remaining
+
+    def show_progress(self, df_filtered):
+        """現在の学習進捗（回答数、正解数）を表示します。"""
+        st.markdown(f"📊 **進捗：{len(st.session_state.answered_words)} / {len(df_filtered)} 語**")
+        st.markdown(f"🔁 **総回答：{st.session_state.total} 回 / 🎯 正解：{st.session_state.correct} 回**")
+        
+    def load_quiz(self, df_filtered: pd.DataFrame, remaining_df: pd.DataFrame):
+        """新しいクイズをロードし、セッション状態を更新します。不正解回数に基づいて出題します。"""
+        if not remaining_df.empty:
+            weights = (remaining_df['不正解回数'] + 1).tolist()
+            
+            if sum(weights) == 0:
+                q = remaining_df.sample(1).iloc[0]
+            else:
+                # 無効な重み（NaN, inf, -inf）をフィルタリングまたはデフォルト値に置換
+                weights = [w if pd.notna(w) and w != float('inf') and w != float('-inf') else 1 for w in weights]
+                if sum(weights) == 0: # 全て1に置換後も合計が0なら（ありえないが念のため）
+                    q = remaining_df.sample(1).iloc[0]
+                else:
+                    q = remaining_df.sample(weights=weights, n=1).iloc[0]
+
+
+            correct_description = q["説明"]
+            # 選択肢プールの対象をフィルタリング後のデータフレーム全体から取得
+            wrong_options_pool = df_filtered[df_filtered["説明"] != correct_description]["説明"].drop_duplicates().tolist()
+            num_wrong_options = min(3, len(wrong_options_pool))
+            wrong_options = random.sample(wrong_options_pool, num_wrong_options)
+
+            options = wrong_options + [correct_description]
+            random.shuffle(options)
+
+            st.session_state.current_quiz = {
+                "単語": q["単語"],
