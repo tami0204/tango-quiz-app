@@ -235,7 +235,8 @@ class QuizApp:
         st.markdown(f"🧩 **午後記述での使用例：** {q['記述']}")
         st.markdown(f"🎯 **使用理由／文脈：** {q['文脈']}")
         st.markdown(f"🕘 **試験区分：** {q['区分']}")
-        st.markdown(f"📈 **出題確率（推定）：** {q['出題確率（推定）']}　🔄 **シラバス改定有無：** {q['シラバス改定有無']}　📝 **改定の意図・影響：** {q['改定の意図・影響']}")
+        # 以下の行から「シラバス改定有無」の表示を削除
+        st.markdown(f"📈 **出題確率（推定）：** {q['出題確率（推定）']}　📝 **改定の意図・影響：** {q['改定の意図・影響']}")
 
     def _handle_answer_submission(self, selected_option_text: str, current_quiz_data: dict):
         """ユーザーの回答を処理し、結果を更新します。"""
