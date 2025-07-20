@@ -20,7 +20,7 @@ class QuizApp:
             # フィルターの選択状態をセッションステートに保持
             "filter_category": "すべて",
             "filter_field": "すべて",
-            "filter_level": "すべて"
+            "filter_level": "すべて" # このキーが「シラバス改定有無」の選択を保持するようになる
         }
         self._initialize_session()
 
@@ -69,7 +69,7 @@ class QuizApp:
         # フィルター選択状態もデフォルトにリセット
         st.session_state.filter_category = "すべて"
         st.session_state.filter_field = "すべて"
-        st.session_state.filter_level = "すべて"
+        st.session_state.filter_level = "すべて" # これもデフォルト値に戻す
 
         st.success("✅ セッションをリセットしました")
         st.rerun()
@@ -113,7 +113,6 @@ class QuizApp:
             on_change=self._on_filter_change_internal, 
             args=("category",)
         )
-        # 以下の行を削除しました: st.session_state.filter_category = category
 
 
         # カテゴリでフィルタリング
@@ -131,7 +130,6 @@ class QuizApp:
             on_change=self._on_filter_change_internal, 
             args=("field",)
         )
-        # 以下の行を削除しました: st.session_state.filter_field = field
 
 
         # 分野でフィルタリング
@@ -139,22 +137,29 @@ class QuizApp:
         if st.session_state.filter_field != "すべて":
             df_filtered_by_field = df_filtered_by_category[df_filtered_by_category["分野"] == st.session_state.filter_field]
 
-        # 試験区分の選択 (カテゴリと分野の選択に基づいて絞り込む)
-        level_options = ["すべて"] + sorted(df_filtered_by_field["試験区分"].dropna().unique())
-        level = st.selectbox(
-            "試験区分を選ぶ", 
-            level_options, 
-            index=level_options.index(st.session_state.filter_level) if st.session_state.filter_level in level_options else 0, 
-            key="filter_level", 
-            on_change=self._on_filter_change_internal, 
-            args=("level",)
-        )
-        # 以下の行を削除しました: st.session_state.filter_level = level
+        # シラバス改定有無の選択
+        # filter_level キーを流用してシラバス改定有無の選択を管理
+        syllabus_change_options = ["すべて"] + sorted(df_filtered_by_field["シラバス改定有無"].dropna().unique())
+        
+        # 現在の filter_level の値が syllabus_change_options に存在するか確認し、indexを設定
+        index_for_selectbox = 0
+        if st.session_state.filter_level in syllabus_change_options:
+            index_for_selectbox = syllabus_change_options.index(st.session_state.filter_level)
 
-        # 試験区分でフィルタリング
+        syllabus_change_status = st.selectbox(
+            "🔄 シラバス改定有無を選ぶ", # ラベルを変更
+            syllabus_change_options,
+            index=index_for_selectbox,
+            key="filter_level", # キーは既存の filter_level を再利用
+            on_change=self._on_filter_change_internal,
+            args=("level",) # on_changeの引数も既存の level (ここでは filter_level に対応) を再利用
+        )
+        
+        # シラバス改定有無でフィルタリング
         df_final_filtered = df_filtered_by_field.copy()
-        if st.session_state.filter_level != "すべて":
-            df_final_filtered = df_filtered_by_field[df_filtered_by_field["試験区分"] == st.session_state.filter_level]
+        if syllabus_change_status != "すべて":
+            df_final_filtered = df_filtered_by_field[df_filtered_by_field["シラバス改定有無"] == syllabus_change_status]
+
 
         # 最終的に表示対象となる単語数と、そのうちまだ回答していない単語を計算
         remaining = df_final_filtered[~df_final_filtered["単語"].isin(st.session_state.answered_words)]
