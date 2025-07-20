@@ -1,1 +1,1 @@
-# tango-quiz-app
+# tango-quiz-app　　使う場合は、ソースをＣｏｐｙしてご使用するよう、ご連絡ください。
