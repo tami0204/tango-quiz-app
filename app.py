@@ -138,8 +138,9 @@ class QuizApp:
             df_filtered_by_field = df_filtered_by_category[df_filtered_by_category["分野"] == st.session_state.filter_field]
 
         # シラバス改定有無の選択
-        # filter_level キーを流用してシラバス改定有無の選択を管理
-        syllabus_change_options = ["すべて"] + sorted(df_filtered_by_field["シラバス改定有無"].dropna().unique())
+        # 'シラバス改定有無' 列を文字列型に変換し、空白を除去、空文字列とNaNを除外してユニークな値を取得
+        valid_syllabus_changes = df_filtered_by_field["シラバス改定有無"].astype(str).str.strip().replace('', pd.NA).dropna().unique().tolist()
+        syllabus_change_options = ["すべて"] + sorted(valid_syllabus_changes)
         
         # 現在の filter_level の値が syllabus_change_options に存在するか確認し、indexを設定
         index_for_selectbox = 0
