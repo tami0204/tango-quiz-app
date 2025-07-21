@@ -194,6 +194,7 @@ class QuizApp:
         # quiz_df全体から、現在の問題の「説明」と異なる説明文を抽出
         # まずユニークな説明文のリストを取得
         all_descriptions = st.session_state.quiz_df["説明"].unique().tolist()
+        
         # 正しい説明文を除外
         other_descriptions = [desc for desc in all_descriptions if desc != correct_description]
         
