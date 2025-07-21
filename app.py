@@ -226,9 +226,10 @@ class QuizApp:
             )
             submit_button = st.form_submit_button("✅ 答え合わせ", disabled=st.session_state.quiz_answered)
 
+            # フォームが送信され、かつまだ回答されていない場合のみ処理
             if submit_button and not st.session_state.quiz_answered:
                 self._handle_answer_submission(selected_option_text, current_quiz_data)
-                st.rerun() # 確実に状態を更新し、結果表示に移行させる
+                st.rerun() # 回答処理後、画面を更新して結果を表示
 
         if st.session_state.quiz_answered:
             st.markdown(f"### {st.session_state.latest_result}")
@@ -251,12 +252,12 @@ class QuizApp:
                 # 「次の問題へ」ボタンが押されたら、quiz_answeredをリセットして次の問題をロード
                 if st.button("➡️ 次の問題へ", key=f"next_quiz_button_{st.session_state.quiz_choice_index}"):
                     st.session_state.current_quiz = None
-                    st.session_state.quiz_answered = False # 回答済みフラグをリセット **ここでリセットされる**
+                    st.session_state.quiz_answered = False # 回答済みフラグをリセット
                     st.rerun()
             with col2:
                 # 「この単語をもう一度出題」ボタンもquiz_answeredをリセット
                 if st.button("🔄 この単語をもう一度出題", key=f"retry_quiz_button_{st.session_state.quiz_choice_index}"):
-                    st.session_state.quiz_answered = False # 回答済みフラグをリセット **ここでリセットされる**
+                    st.session_state.quiz_answered = False # 回答済みフラグをリセット
                     st.rerun()
 
     def _handle_answer_submission(self, selected_option_text: str, current_quiz_data: dict):
