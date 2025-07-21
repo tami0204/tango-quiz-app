@@ -23,11 +23,37 @@ class QuizApp:
         }
         self._initialize_session()
         
-        self.initial_df = original_df.copy() # 元のDFを保持
+        # original_dfをここでセットし、初回読み込み時に適切な型変換を適用
+        self.initial_df = self._process_initial_df(original_df.copy())
 
         # アプリ起動時、またはアップロードがない場合に初期データを設定
         if st.session_state.quiz_df is None:
             self._initialize_quiz_df_from_original()
+
+    def _process_initial_df(self, df: pd.DataFrame) -> pd.DataFrame:
+        """初期DataFrameに対して、必要なカラムの型変換と初期化を適用します。"""
+        
+        # 〇×結果カラムの初期化またはクリーンアップ
+        if '〇×結果' not in df.columns:
+            df['〇×結果'] = ''
+        else:
+            df['〇×結果'] = df['〇×結果'].astype(str).replace('nan', '')
+
+        # 数値カラムの型変換を堅牢に
+        for col in ['正解回数', '不正解回数']:
+            if col not in df.columns:
+                df[col] = 0
+            else:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
+
+        # 日時カラムの型変換を堅牢に
+        for col in ['最終実施日時', '次回実施予定日時']:
+            if col not in df.columns:
+                df[col] = pd.NaT # Not a Time (PandasのdatetimeのNaN)
+            else:
+                df[col] = pd.to_datetime(df[col], errors='coerce')
+        
+        return df
 
     def _initialize_session(self):
         for key, val in self.defaults.items():
@@ -38,38 +64,9 @@ class QuizApp:
 
     def _initialize_quiz_df_from_original(self):
         """元のDataFrameからquiz_dfを初期化し、必要な列を追加します。"""
+        # initial_dfは既に_process_initial_dfで型変換済み
         st.session_state.quiz_df = self.initial_df.copy()
         
-        # 既存の〇×結果, 正解回数, 不正解回数の初期化
-        if '〇×結果' not in st.session_state.quiz_df.columns:
-            st.session_state.quiz_df['〇×結果'] = ''
-        else:
-            st.session_state.quiz_df['〇×結果'] = st.session_state.quiz_df['〇×結果'].astype(str).replace('nan', '')
-
-        # 数値型への変換をより堅牢に
-        if '正解回数' not in st.session_state.quiz_df.columns:
-            st.session_state.quiz_df['正解回数'] = 0
-        else:
-            st.session_state.quiz_df['正解回数'] = pd.to_numeric(st.session_state.quiz_df['正解回数'], errors='coerce').fillna(0).astype(int)
-
-        if '不正解回数' not in st.session_state.quiz_df.columns:
-            st.session_state.quiz_df['不正解回数'] = 0
-        else:
-            st.session_state.quiz_df['不正解回数'] = pd.to_numeric(st.session_state.quiz_df['不正解回数'], errors='coerce').fillna(0).astype(int)
-        
-        # 新しい日時カラムの初期化
-        if '最終実施日時' not in st.session_state.quiz_df.columns:
-            st.session_state.quiz_df['最終実施日時'] = pd.NaT # Not a Time (PandasのdatetimeのNaN)
-        else:
-            # CSVからの読み込み時に文字列として入ってくる可能性があるので変換
-            st.session_state.quiz_df['最終実施日時'] = pd.to_datetime(st.session_state.quiz_df['最終実施日時'], errors='coerce')
-        
-        if '次回実施予定日時' not in st.session_state.quiz_df.columns:
-            st.session_state.quiz_df['次回実施予定日時'] = pd.NaT
-        else:
-            # CSVからの読み込み時に文字列として入ってくる可能性があるので変換
-            st.session_state.quiz_df['次回実施予定日時'] = pd.to_datetime(st.session_state.quiz_df['次回実施予定日時'], errors='coerce')
-
         # 回答済み単語セットも初期化 (回答回数が0でない単語)
         st.session_state.answered_words = set(st.session_state.quiz_df[
             (st.session_state.quiz_df['正解回数'] > 0) | (st.session_state.quiz_df['不正解回数'] > 0)
@@ -224,7 +221,7 @@ class QuizApp:
             with col1:
                 if st.button("➡️ 次の問題へ"):
                     st.session_state.current_quiz = None
-                    st.session_state.quiz_answered = False
+                    st.session_session_state.quiz_answered = False
                     st.rerun()
             with col2:
                 if st.button("🔄 この単語をもう一度出題"):
@@ -301,6 +298,7 @@ class QuizApp:
         ].sort_values(by=['不正解回数', '正解回数', '最終実施日時'], ascending=[False, False, False])
         
         if not display_df.empty:
+            # 表示用に日時フォーマットを適用、既にNaTであれば空文字列になる
             display_df['最終実施日時'] = display_df['最終実施日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
             display_df['次回実施予定日時'] = display_df['次回実施予定日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
             st.dataframe(display_df, use_container_width=True, hide_index=True)
@@ -313,6 +311,7 @@ class QuizApp:
         file_name = f"tango_learning_data_{now.strftime('%Y%m%d_%H%M%S')}.csv"
 
         df_to_save = st.session_state.quiz_df.copy()
+        # ダウンロード用に日時フォーマットを適用、既にNaTであれば空文字列になる
         df_to_save['最終実施日時'] = df_to_save['最終実施日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
         df_to_save['次回実施予定日時'] = df_to_save['次回実施予定日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
 
@@ -332,32 +331,18 @@ class QuizApp:
                     st.error(f"アップロードされたCSVには、以下の必要なカラムが不足しています: {', '.join(missing_cols)}。正しい学習データCSVをアップロードしてください。")
                     return
 
+                # アップロードされたDataFrameにも型変換を適用
+                uploaded_df = self._process_initial_df(uploaded_df)
+
                 merged_df = self.initial_df.set_index('単語').copy()
                 uploaded_df_for_merge = uploaded_df.set_index('単語')
                 
                 update_cols = ['〇×結果', '正解回数', '不正解回数', '最終実施日時', '次回実施予定日時']
                 
-                # アップロードされたデータの型変換をより頑健に
-                for col in ['正解回数', '不正解回数']:
-                    if col in uploaded_df_for_merge.columns:
-                        uploaded_df_for_merge[col] = pd.to_numeric(uploaded_df_for_merge[col], errors='coerce').fillna(0).astype(int)
-                
-                for col in ['最終実施日時', '次回実施予定日時']:
-                    if col in uploaded_df_for_merge.columns:
-                        uploaded_df_for_merge[col] = pd.to_datetime(uploaded_df_for_merge[col], errors='coerce')
-
-
+                # updateメソッドで値を更新
                 merged_df.update(uploaded_df_for_merge[update_cols])
                 
                 final_df = merged_df.reset_index()
-
-                # 最終的なDataFrameの型も再確認
-                final_df['〇×結果'] = final_df['〇×結果'].astype(str).replace('nan', '')
-                final_df['正解回数'] = pd.to_numeric(final_df['正解回数'], errors='coerce').fillna(0).astype(int)
-                final_df['不正解回数'] = pd.to_numeric(final_df['不正解回数'], errors='coerce').fillna(0).astype(int)
-                
-                final_df['最終実施日時'] = pd.to_datetime(final_df['最終実施日時'], errors='coerce')
-                final_df['次回実施予定日時'] = pd.to_datetime(final_df['次回実施予定日時'], errors='coerce')
 
                 st.session_state.quiz_df = final_df
                 
@@ -370,7 +355,7 @@ class QuizApp:
             except Exception as e:
                 st.error(f"CSVファイルの読み込み中にエラーが発生しました: {e}")
                 st.info("ファイルが正しいCSV形式であるか、またはエンコーディングが 'utf-8-sig' であるか確認してください。")
-                st.info("特に '正解回数' や '不正解回数' カラムに、数値以外の文字や空欄がないかご確認ください。")
+                st.info("特に **'正解回数' や '不正解回数' カラムに、数値以外の文字や空欄がないか**ご確認ください。")
 
 
     def reset_session_button(self):
@@ -420,9 +405,12 @@ try:
     df = pd.read_csv(data_file_path, encoding="utf-8-sig")
 
 except Exception as e:
-    st.error(f"データファイルの読み込み中にエラーが発生しました: {e}")
-    st.info("データファイル「tango.csv」の形式が正しいか、またはエンコーディングが 'utf-8-sig' であるか確認してください。")
-    st.info("特に '正解回数' や '不正解回数' カラムに、数値以外の文字や空欄がないかご確認ください。")
+    st.error(f"データファイル **'tango.csv'** の読み込み中に致命的なエラーが発生しました: {e}")
+    st.info("このエラーは、アプリ起動時に使用するメインデータファイルに問題があることを示しています。")
+    st.info("データファイル **'tango.csv'** の形式が正しいか、特に以下の点を確認してください:")
+    st.markdown("- **エンコーディングが 'utf-8-sig' であること**")
+    st.markdown("- **`単語`, `説明`, `カテゴリ`, `分野`, `正解回数`, `不正解回数`, `〇×結果`, `最終実施日時`, `次回実施予定日時` の各カラムが正しく存在すること**")
+    st.markdown("- **`正解回数` や `不正解回数` カラムに数値以外の文字や空欄がないこと (もし空欄なら0として扱われますが、不正な文字はエラーになります)**")
     st.stop()
 
 app = QuizApp(df)
