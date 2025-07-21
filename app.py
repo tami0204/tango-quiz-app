@@ -23,15 +23,18 @@ class QuizApp:
         }
         self._initialize_session()
         
-        # original_dfをここでセットし、初回読み込み時に適切な型変換を適用
-        self.initial_df = self._process_initial_df(original_df.copy())
+        # initial_dfはtango.csvの初期データ（テンプレート）として保持
+        # これは_reset_session_stateでquiz_dfを初期状態に戻す際に使用
+        self.initial_df = self._process_df_types(original_df.copy())
 
         # アプリ起動時、またはアップロードがない場合に初期データを設定
         if st.session_state.quiz_df is None:
             self._initialize_quiz_df_from_original()
 
-    def _process_initial_df(self, df: pd.DataFrame) -> pd.DataFrame:
-        """初期DataFrameに対して、必要なカラムの型変換と初期化を適用します。"""
+    def _process_df_types(self, df: pd.DataFrame) -> pd.DataFrame:
+        """DataFrameに対して、必要なカラムの型変換と初期化を適用します。
+        初期データ読み込み時とアップロードデータ読み込み時の両方で使用します。
+        """
         
         # 〇×結果カラムの初期化またはクリーンアップ
         if '〇×結果' not in df.columns:
@@ -44,6 +47,7 @@ class QuizApp:
             if col not in df.columns:
                 df[col] = 0
             else:
+                # 数値に変換できないものはNaNとなり、fillna(0)で0に
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
 
         # 日時カラムの型変換を堅牢に
@@ -51,8 +55,22 @@ class QuizApp:
             if col not in df.columns:
                 df[col] = pd.NaT # Not a Time (PandasのdatetimeのNaN)
             else:
+                # 日時に変換できないものはNaTに
                 df[col] = pd.to_datetime(df[col], errors='coerce')
         
+        # シラバス改定有無カラムの初期化 (必要であれば)
+        if 'シラバス改定有無' not in df.columns:
+            df['シラバス改定有無'] = ''
+        else:
+            df['シラバス改定有無'] = df['シラバス改定有無'].astype(str).replace('nan', '')
+            
+        # その他の必須ではないが、データに存在する可能性のあるカラムの処理
+        if '午後記述での使用例' not in df.columns: df['午後記述での使用例'] = ''
+        if '使用理由／文脈' not in df.columns: df['使用理由／文脈'] = ''
+        if '試験区分' not in df.columns: df['試験区分'] = ''
+        if '出題確率（推定）' not in df.columns: df['出題確率（推定）'] = ''
+        if '改定の意図・影響' not in df.columns: df['改定の意図・影響'] = ''
+
         return df
 
     def _initialize_session(self):
@@ -63,8 +81,7 @@ class QuizApp:
                 st.session_state[key] = set(st.session_state[key])
 
     def _initialize_quiz_df_from_original(self):
-        """元のDataFrameからquiz_dfを初期化し、必要な列を追加します。"""
-        # initial_dfは既に_process_initial_dfで型変換済み
+        """アプリ起動時またはリセット時にinitial_dfからquiz_dfを初期化します。"""
         st.session_state.quiz_df = self.initial_df.copy()
         
         # 回答済み単語セットも初期化 (回答回数が0でない単語)
@@ -73,15 +90,17 @@ class QuizApp:
         ]["単語"].tolist())
 
     def _reset_session_state(self):
-        """セッション状態をデフォルト値にリセットします。"""
-        self._initialize_quiz_df_from_original() # quiz_dfを初期状態に戻す
+        """セッション状態をデフォルト値にリセットし、quiz_dfをinitial_dfに戻します。"""
+        # まずquiz_dfをinitial_dfの内容で初期化
+        self._initialize_quiz_df_from_original() 
         
+        # その他のセッション状態をデフォルトに戻す
         for key, val in self.defaults.items():
             if key not in ["quiz_df", "filter_category", "filter_field", "filter_level"]:
                 st.session_state[key] = val if not isinstance(val, set) else set()
         st.session_state.filter_category = "すべて"
         st.session_state.filter_field = "すべて"
-        st.session_state.filter_level = "すべて" # 'シラバス改定有無'フィルターもリセット
+        st.session_state.filter_level = "すべて"
 
         st.success("✅ セッションをリセットし、学習データを初期化しました。")
         st.rerun()
@@ -143,7 +162,7 @@ class QuizApp:
         # 2. まだ出題されていない単語を候補に入れる
         if not remaining_df.empty:
             remaining_df_copy = remaining_df.copy()
-            remaining_df_copy['temp_weight'] = 1
+            remaining_df_copy['temp_weight'] = 1 # まだ出題されていない単語の重み
             quiz_candidates_df = pd.concat([quiz_candidates_df, remaining_df_copy], ignore_index=True)
             
         # 重複する単語がある場合、不正解回数が多い方を優先するためにソート
@@ -156,7 +175,7 @@ class QuizApp:
 
         weights = quiz_candidates_df['temp_weight'].tolist()
         
-        if sum(weights) == 0:
+        if sum(weights) == 0: # 全ての重みが0の場合、ランダムに選択 (エラー回避)
             selected_quiz_row = quiz_candidates_df.sample(n=1).iloc[0]
         else:
             selected_quiz_row = quiz_candidates_df.sample(n=1, weights=weights).iloc[0]
@@ -164,6 +183,7 @@ class QuizApp:
         st.session_state.current_quiz = selected_quiz_row.to_dict()
 
         correct_description = st.session_state.current_quiz["説明"]
+        # quiz_df全体から、現在の問題の「説明」と異なる説明文を抽出
         other_descriptions = st.session_state.quiz_df[st.session_state.quiz_df["説明"] != correct_description]["説明"].unique().tolist()
         
         num_wrong_choices = min(3, len(other_descriptions))
@@ -173,7 +193,7 @@ class QuizApp:
         random.shuffle(choices)
         st.session_state.current_quiz["choices"] = choices
         
-        st.session_state.quiz_choice_index = 0
+        st.session_state.quiz_choice_index = 0 # 問題ごとのラジオボタンキーをリセット
 
     def display_quiz(self, df_filtered: pd.DataFrame, remaining_df: pd.DataFrame):
         """クイズを表示し、ユーザーの回答を処理します。"""
@@ -192,7 +212,7 @@ class QuizApp:
                 "説明を選択してください:",
                 options=current_quiz_data["choices"],
                 format_func=lambda x: f"{self.kana_labels[current_quiz_data['choices'].index(x)]}. {x}",
-                key=f"quiz_radio_{st.session_state.total}",
+                key=f"quiz_radio_{st.session_state.total}", # ユニークなキー
                 disabled=st.session_state.quiz_answered
             )
             submit_button = st.form_submit_button("✅ 答え合わせ", disabled=st.session_state.quiz_answered)
@@ -221,7 +241,7 @@ class QuizApp:
             with col1:
                 if st.button("➡️ 次の問題へ"):
                     st.session_state.current_quiz = None
-                    st.session_session_state.quiz_answered = False
+                    st.session_state.quiz_answered = False
                     st.rerun()
             with col2:
                 if st.button("🔄 この単語をもう一度出題"):
@@ -247,8 +267,11 @@ class QuizApp:
         temp_df = st.session_state.quiz_df.copy()
         
         word = current_quiz_data["単語"]
-        if word in temp_df["単語"].values:
-            idx = temp_df[temp_df["単語"] == word].index[0]
+        # quiz_df内の該当単語のインデックスを見つける
+        idx_list = temp_df[temp_df["単語"] == word].index.tolist()
+        
+        if idx_list: # 単語が見つかった場合
+            idx = idx_list[0] # 最初のマッチを使用
             
             temp_df.at[idx, '〇×結果'] = result_mark
             
@@ -260,7 +283,7 @@ class QuizApp:
             temp_df.at[idx, '最終実施日時'] = datetime.datetime.now()
             temp_df.at[idx, '次回実施予定日時'] = datetime.datetime.now() 
 
-        st.session_state.quiz_df = temp_df
+        st.session_state.quiz_df = temp_df # 更新されたDataFrameをセッションに保存
 
         st.session_state.quiz_answered = True
 
@@ -291,16 +314,25 @@ class QuizApp:
         """単語ごとの正解・不正解回数と日時情報を表示します。"""
         st.subheader("単語ごとの学習統計")
         
-        display_df = st.session_state.quiz_df[['単語', '正解回数', '不正解回数', '〇×結果', '最終実施日時', '次回実施予定日時']].copy()
+        # 表示するカラムを明示的に指定
+        display_cols = ['単語', '説明', 'カテゴリ', '分野', 'シラバス改定有無', 
+                        '正解回数', '不正解回数', '〇×結果', '最終実施日時', '次回実施予定日時']
         
+        # quiz_dfにあるカラムのみを抽出して表示 (アップロードデータによっては全カラムがない場合があるため)
+        cols_to_display = [col for col in display_cols if col in st.session_state.quiz_df.columns]
+        display_df = st.session_state.quiz_df[cols_to_display].copy()
+        
+        # 回答履歴のある単語のみ表示、またはすべての単語を表示するか選択肢を設けることも可能だが、今回は回答履歴のみ
         display_df = display_df[
             (display_df['正解回数'] > 0) | (display_df['不正解回数'] > 0)
         ].sort_values(by=['不正解回数', '正解回数', '最終実施日時'], ascending=[False, False, False])
         
         if not display_df.empty:
             # 表示用に日時フォーマットを適用、既にNaTであれば空文字列になる
-            display_df['最終実施日時'] = display_df['最終実施日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
-            display_df['次回実施予定日時'] = display_df['次回実施予定日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
+            if '最終実施日時' in display_df.columns:
+                display_df['最終実施日時'] = display_df['最終実施日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
+            if '次回実施予定日時' in display_df.columns:
+                display_df['次回実施予定日時'] = display_df['次回実施予定日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
             st.dataframe(display_df, use_container_width=True, hide_index=True)
         else:
             st.info("まだ回答履歴のある単語はありません。")
@@ -312,8 +344,10 @@ class QuizApp:
 
         df_to_save = st.session_state.quiz_df.copy()
         # ダウンロード用に日時フォーマットを適用、既にNaTであれば空文字列になる
-        df_to_save['最終実施日時'] = df_to_save['最終実施日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
-        df_to_save['次回実施予定日時'] = df_to_save['次回実施予定日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
+        if '最終実施日時' in df_to_save.columns:
+            df_to_save['最終実施日時'] = df_to_save['最終実施日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
+        if '次回実施予定日時' in df_to_save.columns:
+            df_to_save['次回実施予定日時'] = df_to_save['次回実施予定日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
 
         csv_quiz_data = df_to_save.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
         st.download_button("📥 **現在の学習データをダウンロード**", data=csv_quiz_data, file_name=file_name, mime="text/csv")
@@ -325,37 +359,36 @@ class QuizApp:
             try:
                 uploaded_df = pd.read_csv(uploaded_file, encoding="utf-8-sig")
                 
-                required_cols = ["単語", "説明", "カテゴリ", "分野", "正解回数", "不正解回数", "〇×結果", "最終実施日時", "次回実施予定日時"]
-                missing_cols = [col for col in required_cols if col not in uploaded_df.columns]
-                if missing_cols:
-                    st.error(f"アップロードされたCSVには、以下の必要なカラムが不足しています: {', '.join(missing_cols)}。正しい学習データCSVをアップロードしてください。")
+                # アップロードされたCSVに必要な必須カラムが含まれているかチェック
+                required_core_cols = ["単語", "説明", "カテゴリ", "分野"]
+                missing_core_cols = [col for col in required_core_cols if col not in uploaded_df.columns]
+                if missing_core_cols:
+                    st.error(f"アップロードされたCSVには、以下の**必須カラム**が不足しています: {', '.join(missing_core_cols)}。")
+                    st.info("これらはクイズの出題に不可欠な情報です。正しい形式のCSVファイルをアップロードしてください。")
                     return
 
-                # アップロードされたDataFrameにも型変換を適用
-                uploaded_df = self._process_initial_df(uploaded_df)
-
-                merged_df = self.initial_df.set_index('単語').copy()
-                uploaded_df_for_merge = uploaded_df.set_index('単語')
+                # アップロードされたDataFrameに型変換を適用し、不足する学習履歴カラムを初期化
+                processed_uploaded_df = self._process_df_types(uploaded_df.copy())
                 
-                update_cols = ['〇×結果', '正解回数', '不正解回数', '最終実施日時', '次回実施予定日時']
+                # 全てのセッションステートをデフォルト値にリセット
+                for key, val in self.defaults.items():
+                    if key != "quiz_df": # quiz_dfはここで新しいデータで上書きするためスキップ
+                        st.session_state[key] = val if not isinstance(val, set) else set()
                 
-                # updateメソッドで値を更新
-                merged_df.update(uploaded_df_for_merge[update_cols])
+                # ここでアップロードされたデータを現在の学習データとして完全に置き換える
+                st.session_state.quiz_df = processed_uploaded_df 
                 
-                final_df = merged_df.reset_index()
-
-                st.session_state.quiz_df = final_df
-                
+                # 回答済み単語セットも最新のquiz_dfに基づいて再構築
                 st.session_state.answered_words = set(st.session_state.quiz_df[
                     (st.session_state.quiz_df['正解回数'] > 0) | (st.session_state.quiz_df['不正解回数'] > 0)
                 ]["単語"].tolist())
 
                 st.success("✅ 学習データを正常にロードしました！")
-                st.rerun()
+                st.rerun() # 変更を反映するために再実行
             except Exception as e:
                 st.error(f"CSVファイルの読み込み中にエラーが発生しました: {e}")
                 st.info("ファイルが正しいCSV形式であるか、またはエンコーディングが 'utf-8-sig' であるか確認してください。")
-                st.info("特に **'正解回数' や '不正解回数' カラムに、数値以外の文字や空欄がないか**ご確認ください。")
+                st.info("特に '正解回数' や '不正解回数' カラムに、数値以外の文字や空欄がないかご確認ください。")
 
 
     def reset_session_button(self):
@@ -388,7 +421,9 @@ class QuizApp:
         elif st.session_state.total > 0:
             self.show_completion()
         else:
-            st.info("選択されたフィルター条件に一致する単語がありません。フィルターを変更してください。")
+            st.info("選択されたフィルター条件に一致する単語がないか、すべての単語を回答しました！")
+            st.info("フィルターを変更するか、学習データをリセットしてください。")
+
 
         st.markdown("---")
         self.display_statistics()
@@ -409,7 +444,7 @@ except Exception as e:
     st.info("このエラーは、アプリ起動時に使用するメインデータファイルに問題があることを示しています。")
     st.info("データファイル **'tango.csv'** の形式が正しいか、特に以下の点を確認してください:")
     st.markdown("- **エンコーディングが 'utf-8-sig' であること**")
-    st.markdown("- **`単語`, `説明`, `カテゴリ`, `分野`, `正解回数`, `不正解回数`, `〇×結果`, `最終実施日時`, `次回実施予定日時` の各カラムが正しく存在すること**")
+    st.markdown("- **`単語`, `説明`, `カテゴリ`, `分野` の各必須カラムが正しく存在すること**")
     st.markdown("- **`正解回数` や `不正解回数` カラムに数値以外の文字や空欄がないこと (もし空欄なら0として扱われますが、不正な文字はエラーになります)**")
     st.stop()
 
