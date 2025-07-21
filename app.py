@@ -68,7 +68,7 @@ class QuizApp:
         if '午後記述での使用例' not in df.columns: df['午後記述での使用例'] = ''
         if '使用理由／文脈' not in df.columns: df['使用理由／文脈'] = ''
         if '試験区分' not in df.columns: df['試験区分'] = ''
-        if '出題確率（推定）' not in df.columns: df['出題確率（推定）』 = '' ## 修正箇所：閉じクォートが全角になっていたのを修正
+        if '出題確率（推定）' not in df.columns: df['出題確率（推定）'] = '' ## 修正箇所：閉じクォートが全角になっていたのを修正
         if '改定の意図・影響' not in df.columns: df['改定の意図・影響'] = ''
 
         return df
@@ -202,7 +202,7 @@ class QuizApp:
         num_wrong_choices = min(3, len(other_descriptions))
         
         # 間違った選択肢をランダムに選択
-        wrong_choices = random.sample(other_descriptions, num_wrong_choices) ## 修正箇所: この行自体は元から正しいが、ログのエラー示唆のため記載
+        wrong_choices = random.sample(other_descriptions, num_wrong_choices) ## 修正箇所: ここでSyntaxErrorが出ていた箇所
 
         choices = wrong_choices + [correct_description]
         random.shuffle(choices)
