@@ -45,10 +45,17 @@ class QuizApp:
             st.session_state.quiz_df['〇×結果'] = ''
         else:
             st.session_state.quiz_df['〇×結果'] = st.session_state.quiz_df['〇×結果'].astype(str).replace('nan', '')
+
+        # 数値型への変換をより堅牢に
         if '正解回数' not in st.session_state.quiz_df.columns:
             st.session_state.quiz_df['正解回数'] = 0
+        else:
+            st.session_state.quiz_df['正解回数'] = pd.to_numeric(st.session_state.quiz_df['正解回数'], errors='coerce').fillna(0).astype(int)
+
         if '不正解回数' not in st.session_state.quiz_df.columns:
             st.session_state.quiz_df['不正解回数'] = 0
+        else:
+            st.session_state.quiz_df['不正解回数'] = pd.to_numeric(st.session_state.quiz_df['不正解回数'], errors='coerce').fillna(0).astype(int)
         
         # 新しい日時カラムの初期化
         if '最終実施日時' not in st.session_state.quiz_df.columns:
@@ -329,13 +336,25 @@ class QuizApp:
                 uploaded_df_for_merge = uploaded_df.set_index('単語')
                 
                 update_cols = ['〇×結果', '正解回数', '不正解回数', '最終実施日時', '次回実施予定日時']
+                
+                # アップロードされたデータの型変換をより頑健に
+                for col in ['正解回数', '不正解回数']:
+                    if col in uploaded_df_for_merge.columns:
+                        uploaded_df_for_merge[col] = pd.to_numeric(uploaded_df_for_merge[col], errors='coerce').fillna(0).astype(int)
+                
+                for col in ['最終実施日時', '次回実施予定日時']:
+                    if col in uploaded_df_for_merge.columns:
+                        uploaded_df_for_merge[col] = pd.to_datetime(uploaded_df_for_merge[col], errors='coerce')
+
+
                 merged_df.update(uploaded_df_for_merge[update_cols])
                 
                 final_df = merged_df.reset_index()
 
+                # 最終的なDataFrameの型も再確認
                 final_df['〇×結果'] = final_df['〇×結果'].astype(str).replace('nan', '')
-                final_df['正解回数'] = final_df['正解回数'].fillna(0).astype(int)
-                final_df['不正解回数'] = final_df['不正解回数'].fillna(0).astype(int)
+                final_df['正解回数'] = pd.to_numeric(final_df['正解回数'], errors='coerce').fillna(0).astype(int)
+                final_df['不正解回数'] = pd.to_numeric(final_df['不正解回数'], errors='coerce').fillna(0).astype(int)
                 
                 final_df['最終実施日時'] = pd.to_datetime(final_df['最終実施日時'], errors='coerce')
                 final_df['次回実施予定日時'] = pd.to_datetime(final_df['次回実施予定日時'], errors='coerce')
@@ -351,6 +370,8 @@ class QuizApp:
             except Exception as e:
                 st.error(f"CSVファイルの読み込み中にエラーが発生しました: {e}")
                 st.info("ファイルが正しいCSV形式であるか、またはエンコーディングが 'utf-8-sig' であるか確認してください。")
+                st.info("特に '正解回数' や '不正解回数' カラムに、数値以外の文字や空欄がないかご確認ください。")
+
 
     def reset_session_button(self):
         """セッションリセットボタンを表示します。"""
@@ -401,6 +422,7 @@ try:
 except Exception as e:
     st.error(f"データファイルの読み込み中にエラーが発生しました: {e}")
     st.info("データファイル「tango.csv」の形式が正しいか、またはエンコーディングが 'utf-8-sig' であるか確認してください。")
+    st.info("特に '正解回数' や '不正解回数' カラムに、数値以外の文字や空欄がないかご確認ください。")
     st.stop()
 
 app = QuizApp(df)
