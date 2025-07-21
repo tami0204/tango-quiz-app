@@ -591,10 +591,11 @@ def main():
             mime="text/csv",
             key="download_button"
         )
+    
+    # 区切り線をここに移動しました
+    st.sidebar.markdown("---") 
 
-    st.sidebar.markdown("---") # ここのマージンが短縮されます
-
-    st.sidebar.header("クイズの絞り込み") # ここの下部マージンが短縮されます
+    st.sidebar.header("クイズの絞り込み") 
     
     df_filtered = pd.DataFrame()
     remaining_df = pd.DataFrame()
