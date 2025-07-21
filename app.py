@@ -194,10 +194,14 @@ class QuizApp:
         # quiz_df全体から、現在の問題の「説明」と異なる説明文を抽出
         # まずユニークな説明文のリストを取得
         all_descriptions = st.session_state.quiz_df["説明"].unique().tolist()
+        
         # 正しい説明文を除外
         other_descriptions = [desc for desc in all_descriptions if desc != correct_description]
         
+        # 間違った選択肢の数を調整
         num_wrong_choices = min(3, len(other_descriptions))
+        
+        # 間違った選択肢をランダムに選択
         wrong_choices = random.sample(other_descriptions, num_wrong_choices)
 
         choices = wrong_choices + [correct_description]
