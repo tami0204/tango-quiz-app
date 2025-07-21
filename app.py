@@ -35,6 +35,8 @@ defaults = {
     "answered_words": set(),
     "debug_mode": False,
     "quiz_mode": "復習", # quiz_mode もここで初期化すること
+    # 新しく main_data_source_radio をデフォルトに追加 (ラジオボタンのキーに合わせる)
+    "main_data_source_radio": "初期データ",
 }
 
 for key, val in defaults.items():
@@ -47,7 +49,7 @@ for key, val in defaults.items():
 # --- ここまでセッション状態の初期化ロジック ---
 
 
-# カスタムCSSの適用
+# カスタムCSSの適用 (変更なし)
 st.markdown("""
 <style>
     /* 全体のフォントを調整 */
@@ -159,9 +161,7 @@ st.markdown("""
 
 class QuizApp:
     def __init__(self):
-        # セッション状態の初期化は、アプリの先頭で行うため、ここでは何もしないか、
-        # もしくは初期化が確実に行われた後のロジックのみを記述
-        pass # または、必要に応じて追加のセットアップロジック
+        pass
 
     def _reset_quiz_state_only(self):
         """クイズの進行に関するセッションステートのみをリセットします。"""
@@ -177,7 +177,6 @@ class QuizApp:
     def _load_initial_data(self):
         """初期データをロードし、セッション状態に設定します。"""
         try:
-            # CSVファイルを直接読み込む (エンコーディング指定)
             df = pd.read_csv("tango.csv", encoding='utf-8')
             st.session_state.quiz_df = self._process_df_types(df)
             st.success("初期データをロードしました！")
@@ -252,7 +251,7 @@ class QuizApp:
                     # アップロードされたファイルをすぐにアクティブなデータソースとして設定
                     st.session_state.quiz_df = self._process_df_types(uploaded_df.copy())
                     st.session_state.data_source_selection = "アップロード" # データソースをアップロードに切り替える
-                    st.session_state.main_data_source_radio = "アップロード" # ラジオボタンの状態も更新
+                    # st.session_state.main_data_source_radio = "アップロード" # <-- この行は不要
                     self._reset_quiz_state_only()
                     st.success(f"'{uploaded_file.name}' をロードしました！")
                 except Exception as e:
@@ -271,7 +270,7 @@ class QuizApp:
             # もし現在アップロードデータが選択されていれば、初期データに戻すなどの処理も検討
             if st.session_state.data_source_selection == "アップロード":
                 st.session_state.data_source_selection = "初期データ"
-                st.session_state.main_data_source_radio = "初期データ"
+                # st.session_state.main_data_source_radio = "初期データ" # <-- この行は不要
                 self._load_initial_data()
 
 
@@ -513,7 +512,6 @@ class QuizApp:
 
 # アプリケーションの実行
 def main():
-    # QuizAppのインスタンス化 (セッション状態の初期化は既に行われているため、ここではパスまたは他のロジック)
     quiz_app = QuizApp()
 
     # サイドバーのデータソース選択
@@ -522,19 +520,20 @@ def main():
 
     def on_data_source_change():
         """ラジオボタンが変更されたときに呼び出されるコールバック関数"""
-        if st.session_state.main_data_source_radio != st.session_state.data_source_selection:
-            st.session_state.data_source_selection = st.session_state.main_data_source_radio
-            
-            if st.session_state.data_source_selection == "初期データ":
-                quiz_app._load_initial_data()
-                st.session_state.uploaded_df_temp = None
-                st.session_state.uploaded_file_name = None
-                st.session_state.uploaded_file_size = None
-            else: # "アップロード"が選択された場合
-                if st.session_state.uploaded_df_temp is not None:
-                    quiz_app._load_uploaded_data()
-                # ファイルが選択されていない場合はアップローダーが自動的にNoneを返すので、
-                # uploaded_df_tempがない場合は何もロードしない
+        # data_source_selection と main_data_source_radio は同じ値を共有する
+        # on_changeで main_data_source_radio が更新された後、data_source_selection に反映
+        st.session_state.data_source_selection = st.session_state.main_data_source_radio
+        
+        if st.session_state.data_source_selection == "初期データ":
+            quiz_app._load_initial_data()
+            st.session_state.uploaded_df_temp = None
+            st.session_state.uploaded_file_name = None
+            st.session_state.uploaded_file_size = None
+        else: # "アップロード"が選択された場合
+            if st.session_state.uploaded_df_temp is not None:
+                quiz_app._load_uploaded_data()
+            # ファイルが選択されていない場合はアップローダーが自動的にNoneを返すので、
+            # uploaded_df_tempがない場合は何もロードしない
 
     selected_source_radio = st.sidebar.radio(
         "**データソースを選択**",
@@ -553,20 +552,25 @@ def main():
     )
     
     # ファイルアップロードのハンドリング
+    # Streamlitのライフサイクルを考慮し、UploadedFileオブジェクトが存在する場合のみ処理を継続
+    # ファイルがクリアされた場合の処理は on_data_source_change に任せるか、よりシンプルにする
     if uploaded_file is not None:
         quiz_app.handle_upload_logic(uploaded_file)
     else:
-        # アップローダーがクリアされた場合、かつ現在アップロードデータソースが選択されている場合、
-        # 初期データに戻す
+        # uploaded_file が None で、かつ現在 "アップロード" が選択されているが
+        # 実際にデータがロードされていない（uploaded_df_tempがNone）場合、初期データに戻す
         if st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is None:
-            st.session_state.data_source_selection = "初期データ"
-            st.session_state.main_data_source_radio = "初期データ"
+            # ラジオボタンの値を直接変更するのではなく、on_change に任せる
+            # st.session_state.main_data_source_radio = "初期データ" # <-- ここも削除
+            st.session_state.data_source_selection = "初期データ" # これでOK
             quiz_app._load_initial_data()
 
 
     # アプリケーションの初期ロード時に初期データをロード
     # この部分は、上記の全体的な初期化と重複する可能性があるため、ロジックを見直す
     # たとえば、quiz_dfがNoneの場合は、selected_source_radioに基づいてロードする
+    # data_source_selection の初期値と on_change での処理により、
+    # このブロックの大部分は不要になるか、よりシンプルなチェックで済むはず
     if st.session_state.quiz_df is None:
         if st.session_state.data_source_selection == "初期データ":
             quiz_app._load_initial_data()
@@ -574,16 +578,15 @@ def main():
             quiz_app._load_uploaded_data()
 
 
-    # タブの作成
+    # タブの作成 (変更なし)
     tab1, tab2 = st.tabs(["クイズ", "データビューア"])
 
     with tab1:
         st.header("情報処理試験対策クイズ")
         
-        # クイズモードの選択
+        # クイズモードの選択 (変更なし)
         st.sidebar.header("🎯 クイズモード")
         quiz_modes = ["復習", "未回答", "苦手"]
-        # quiz_modeは既に初期化されているはずなので、indexの参照でエラーは発生しない
         st.session_state.quiz_mode = st.sidebar.radio(
             "クイズモードを選択", 
             quiz_modes, 
@@ -628,7 +631,7 @@ def main():
         else:
             st.sidebar.info("データがロードされていません。") 
         
-        # デバッグモードの切り替え
+        # デバッグモードの切り替え (変更なし)
         st.sidebar.markdown("---")
         st.sidebar.subheader("開発者ツール")
         st.session_state.debug_mode = st.sidebar.checkbox(
@@ -643,7 +646,7 @@ def main():
         st.header("登録データ一覧")
         quiz_app.display_data_viewer()
 
-    # フッターの表示
+    # フッターの表示 (変更なし)
     st.markdown("---")
     st.markdown("""
     <div style="text-align: center; margin-top: 20px; font-size: 0.8em; color: #666;">
