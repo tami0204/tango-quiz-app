@@ -299,8 +299,8 @@ class QuizApp:
                 st.session_state.data_source_selection = "初期データ"
                 self._load_initial_data()
 
-
-    def _apply_filters(self, df: pd.DataFrame) -> pd.DataFrame:
+    @staticmethod # staticmethod に変更
+    def _apply_filters(df: pd.DataFrame) -> pd.DataFrame:
         """セッション状態のフィルターに基づいてDataFrameをフィルターします。"""
         # @st.cache_data デコレータを削除し、常に最新のデータを参照するようにする
         filtered_df = df.copy()
@@ -414,8 +414,12 @@ class QuizApp:
                 st.session_state.quiz_answered = True
                 
                 # '〇×結果'を更新 (正解なら'〇'、不正解なら'×')
-                st.session_state.quiz_df.loc[idx, '〇×結果'] = '〇' if user_answer == correct_answer_description else '×'
-
+                # 未回答のラジオボタンが選択された場合でも、回答が済んだと見なすため、
+                # ここで '〇×結果' を更新し、answered_words に追加します。
+                # ただし、未回答以外のラジオボタンの仕様は変更しないため、正解/不正解のロジックは維持。
+                if st.session_state.quiz_df.loc[idx, '〇×結果'] == '': # 未回答だった場合のみ減算対象
+                    st.session_state.quiz_df.loc[idx, '〇×結果'] = '〇' if user_answer == correct_answer_description else '×'
+                
                 # 正解回数/不正解回数を更新
                 if user_answer == correct_answer_description:
                     st.session_state.quiz_df.loc[idx, '正解回数'] += 1
@@ -446,7 +450,7 @@ class QuizApp:
         # クイズの開始・リロードボタン
         if st.button("クイズ開始 / 次の問題", key="start_quiz_button"):
             # load_quizを呼ぶ前に最新のremaining_dfを渡すために、ここで再計算
-            current_df_filtered = quiz_app._apply_filters(st.session_state.quiz_df)
+            current_df_filtered = QuizApp._apply_filters(st.session_state.quiz_df) # staticmethodとして呼び出す
             current_remaining_df = current_df_filtered[current_df_filtered["〇×結果"] == '']
             self.load_quiz(current_df_filtered, current_remaining_df)
             st.session_state.latest_result = "" # 新しい問題では結果をリセット
@@ -548,7 +552,10 @@ def main():
         st.session_state.data_source_selection = st.session_state.main_data_source_radio
         
         if st.session_state.data_source_selection == "初期データ":
-            quiz_app._load_initial_data()
+            # QuizAppのインスタンスメソッドとしてではなく、直接関数を呼び出すか、
+            # QuizAppのメソッドがstaticである必要があります。
+            # ここでは直接QuizAppインスタンスのメソッドを呼べるようにquiz_appを外で初期化しています。
+            quiz_app._load_initial_data() 
             st.session_state.uploaded_df_temp = None
             st.session_state.uploaded_file_name = None
             st.session_state.uploaded_file_size = None
@@ -638,7 +645,8 @@ def main():
             )
 
             # ここでフィルターを適用し、常に最新の df_filtered と remaining_df を取得
-            df_filtered = quiz_app._apply_filters(st.session_state.quiz_df)
+            # staticmethodになったので、クラス名から直接呼び出します
+            df_filtered = QuizApp._apply_filters(st.session_state.quiz_df) 
             remaining_df = df_filtered[df_filtered["〇×結果"] == '']
         else:
             st.info("データがロードされていません。") 
