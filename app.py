@@ -609,6 +609,7 @@ def main():
 
         st.sidebar.header("クイズの絞り込み") 
         
+        # --- df_filtered と remaining_df の計算をサイドバー表示の直前に移動 ---
         df_filtered = pd.DataFrame()
         remaining_df = pd.DataFrame()
 
@@ -643,6 +644,7 @@ def main():
             remaining_df = df_filtered[df_filtered["〇×結果"] == '']
         else:
             st.sidebar.info("データがロードされていません。") 
+        # --- 修正ここまで ---
         
         # 各件数をサイドバーに表示
         st.sidebar.markdown("---")
@@ -651,12 +653,10 @@ def main():
         # フィルタリングされた単語の総数を計算
         filtered_count = len(df_filtered)
 
-        # --- 件数表示のフォーマット変更と、固定ラベル化 ---
         st.sidebar.markdown(f"<div class='metric-container'><span class='metric-label'>正解：</span><span class='metric-value'>{st.session_state.correct}</span></div>", unsafe_allow_html=True)
         st.sidebar.markdown(f"<div class='metric-container'><span class='metric-label'>回答：</span><span class='metric-value'>{st.session_state.total}</span></div>", unsafe_allow_html=True)
         st.sidebar.markdown(f"<div class='metric-container'><span class='metric-label'>未回答：</span><span class='metric-value'>{len(remaining_df)}</span></div>", unsafe_allow_html=True)
         st.sidebar.markdown(f"<div class='metric-container'><span class='metric-label'>対象：</span><span class='metric-value'>{filtered_count}</span></div>", unsafe_allow_html=True)
-        # --- 変更ここまで ---
 
         # デバッグモードの切り替え
         st.sidebar.markdown("---")
