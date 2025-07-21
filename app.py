@@ -178,12 +178,12 @@ class QuizApp:
         """初期データをロードし、セッション状態に設定します。"""
         try:
             # CSVファイルを直接読み込む (エンコーディング指定)
-            df = pd.read_csv("quiz_data.csv", encoding='utf-8')
+            df = pd.read_csv("tangocsv", encoding='utf-8')
             st.session_state.quiz_df = self._process_df_types(df)
             st.success("初期データをロードしました！")
             self._reset_quiz_state_only()
         except FileNotFoundError:
-            st.error("エラー: 初期データファイル 'quiz_data.csv' が見つかりません。")
+            st.error("エラー: 初期データファイル 'tango.csv' が見つかりません。")
             st.session_state.quiz_df = None
         except Exception as e:
             st.error(f"初期データのロード中にエラーが発生しました: {e}")
