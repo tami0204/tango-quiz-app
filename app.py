@@ -104,7 +104,7 @@ class QuizApp:
         self.defaults = {
             "total": 0,
             "correct": 0,
-            "answered_words": set(), # これは、一度でも回答された単語のユニークリスト（正解/不正解問わず）
+            "answered_words": set(), # これは、'〇×結果'がブランクではない単語のユニークリスト
             "latest_result": "",
             "latest_correct_description": "",
             "current_quiz": None,
@@ -146,9 +146,9 @@ class QuizApp:
     def _load_initial_data(self):
         """初期データをquiz_dfにロードします。"""
         st.session_state.quiz_df = self.initial_df.copy()
-        # answered_wordsは正誤に関わらず「一度でも回答した単語」を追跡し続ける
+        # '〇×結果'が空文字列ではない単語をanswered_wordsとする
         st.session_state.answered_words = set(st.session_state.quiz_df[
-            (st.session_state.quiz_df['正解回数'] > 0) | (st.session_state.quiz_df['不正解回数'] > 0)
+            st.session_state.quiz_df['〇×結果'] != ''
         ]["単語"].tolist())
         self._reset_quiz_state_only() 
 
@@ -156,16 +156,19 @@ class QuizApp:
         """アップロードされたデータをquiz_dfにロードします。"""
         if st.session_state.uploaded_df_temp is not None:
             st.session_state.quiz_df = st.session_state.uploaded_df_temp.copy()
-            # answered_wordsは正誤に関わらず「一度でも回答した単語」を追跡し続ける
+            # '〇×結果'が空文字列ではない単語をanswered_wordsとする
             st.session_state.answered_words = set(st.session_state.quiz_df[
-                (st.session_state.quiz_df['正解回数'] > 0) | (st.session_state.quiz_df['不正解回数'] > 0)
+                st.session_state.quiz_df['〇×結果'] != ''
             ]["単語"].tolist())
             self._reset_quiz_state_only() 
 
     def _process_df_types(self, df: pd.DataFrame) -> pd.DataFrame:
         """DataFrameに対して、必要なカラムの型変換と初期化を適用します。"""
-        if '〇×結果' not in df.columns: df['〇×結果'] = ''
-        else: df['〇×結果'] = df['〇×結果'].astype(str).replace('nan', '')
+        if '〇×結果' not in df.columns: 
+            df['〇×結果'] = ''
+        else: 
+            # NaNを空文字列に変換し、文字列型に統一
+            df['〇×結果'] = df['〇×結果'].astype(str).replace('nan', '')
 
         for col_name in ['正解回数', '不正解回数']:
             if col_name not in df.columns: df[col_name] = 0
@@ -241,9 +244,8 @@ class QuizApp:
         if st.session_state.filter_level != "すべて":
             df = df[df["シラバス改定有無"] == st.session_state.filter_level]
 
-        # 既に回答した（正誤問わず）単語は出題候補から除外
-        # このremaining_dfは「未回答」モードの主要な候補となる
-        remaining_df = df[~df["単語"].isin(st.session_state.answered_words)]
+        # 「未回答」の定義: '〇×結果' が空文字列の単語
+        remaining_df = df[df["〇×結果"] == '']
 
         return df, remaining_df
 
@@ -259,12 +261,12 @@ class QuizApp:
         
         # モードに応じた候補単語の選択
         if st.session_state.quiz_mode == "未回答":
-            # まだ回答されていない単語のみを候補とする
+            # '〇×結果' が空文字列の単語を候補とする
             if not remaining_df.empty:
                 quiz_candidates_df = remaining_df.copy()
                 quiz_candidates_df['temp_weight'] = 1 # 未回答単語はすべて等しい重み
             else:
-                st.info("現在のフィルター条件で、まだ回答していない単語はありません。モードを変更するか、フィルターを解除してください。")
+                # ユーザーへのメッセージはmain関数側で表示するため、ここではNoneを返す
                 st.session_state.current_quiz = None
                 return
 
@@ -281,6 +283,8 @@ class QuizApp:
             # 正解回数が3回以下の単語（まだあまり習得できていない単語）を次点
             # 未回答の単語もここに含まれる可能性がある
             low_correct_count = df_filtered[
+                # '〇×結果'が空でないものに絞り、かつ正解回数が少ないものを対象にする
+                (df_filtered['〇×結果'] != '') & 
                 (df_filtered["正解回数"] <= 3) 
             ].copy()
             if not low_correct_count.empty:
@@ -291,7 +295,6 @@ class QuizApp:
                     quiz_candidates_df = pd.concat([quiz_candidates_df, low_correct_count], ignore_index=True)
             
             if quiz_candidates_df.empty:
-                st.info("現在のフィルター条件で、苦手な単語（不正解が多いか正解3回以下）はありません。モードを変更してください。")
                 st.session_state.current_quiz = None
                 return
 
@@ -301,7 +304,6 @@ class QuizApp:
                 quiz_candidates_df = df_filtered.copy()
                 quiz_candidates_df['temp_weight'] = 1 # 全て等しい重みでランダム出題
             else:
-                st.info("現在のフィルター条件に一致する単語がありません。フィルターを変更してください。")
                 st.session_state.current_quiz = None
                 return
         
@@ -309,7 +311,6 @@ class QuizApp:
         quiz_candidates_df = quiz_candidates_df.sort_values(by='temp_weight', ascending=False).drop_duplicates(subset='単語', keep='first')
 
         if quiz_candidates_df.empty:
-            st.info("選択されたモードとフィルター条件では、出題できる単語が見つかりませんでした。設定を変更してください。")
             st.session_state.current_quiz = None
             return
 
@@ -425,7 +426,8 @@ class QuizApp:
         st.session_state.debug_message_quiz_start = f"DEBUG: _handle_answer_submission 開始。選択肢='{selected_option_text}'"
 
         st.session_state.total += 1
-        st.session_state.answered_words.add(current_quiz_data["単語"]) # 正誤問わず、回答された単語として記録
+        # '〇×結果'がブランクでなくなるため、自動的にanswered_wordsに追加される
+        # st.session_state.answered_words.add(current_quiz_data["単語"]) 
 
         is_correct = (selected_option_text == current_quiz_data["説明"])
         result_mark = "〇" if is_correct else "×"
@@ -463,6 +465,10 @@ class QuizApp:
             st.session_state.debug_message_answer_update = ""
 
         st.session_state.quiz_df = temp_df
+        # 〇×結果が更新されたので、answered_wordsも更新する
+        st.session_state.answered_words = set(st.session_state.quiz_df[
+            st.session_state.quiz_df['〇×結果'] != ''
+        ]["単語"].tolist())
 
         st.session_state.quiz_answered = True
         st.session_state.debug_message_answer_end = f"DEBUG: _handle_answer_submission 終了。quiz_answered={st.session_state.quiz_answered}, total={st.session_state.total}, correct={st.session_state.correct}"
@@ -473,16 +479,16 @@ class QuizApp:
         
         total_filtered_words = len(df_filtered)
         
-        # 回答済み (〇) の単語数をカウントする
-        answered_filtered_words = len(df_filtered[df_filtered["〇×結果"] == '〇'])
+        # '〇×結果'が'〇'の単語数を正解済みとしてカウントする
+        correctly_answered_filtered_words = len(df_filtered[df_filtered["〇×結果"] == '〇'])
 
         if total_filtered_words == 0:
             st.sidebar.info("現在のフィルター条件に一致する単語がありません。")
             return
 
-        progress_percent = (answered_filtered_words / total_filtered_words) if total_filtered_words > 0 else 0
+        progress_percent = (correctly_answered_filtered_words / total_filtered_words) if total_filtered_words > 0 else 0
         
-        st.sidebar.markdown(f"**<span style='font-size: 1.1em;'>正解済み: {answered_filtered_words} / {total_filtered_words} 単語</span>**", unsafe_allow_html=True)
+        st.sidebar.markdown(f"**<span style='font-size: 1.1em;'>正解済み: {correctly_answered_filtered_words} / {total_filtered_words} 単語</span>**", unsafe_allow_html=True)
         st.sidebar.progress(progress_percent)
 
     def show_completion(self):
@@ -504,9 +510,9 @@ class QuizApp:
         cols_to_display = [col for col in display_cols if col in st.session_state.quiz_df.columns]
         display_df = st.session_state.quiz_df[cols_to_display].copy()
         
-        # 正解または不正解の履歴がある単語のみを表示
+        # '〇×結果'がブランクではない単語のみを表示
         display_df = display_df[
-            (display_df['正解回数'] > 0) | (display_df['不正解回数'] > 0)
+            display_df['〇×結果'] != ''
         ].sort_values(by=['不正解回数', '正解回数', '最終実施日時'], ascending=[False, False, False])
         
         if not display_df.empty:
@@ -641,8 +647,8 @@ def main():
     st.sidebar.header("クイズの絞り込み") 
     
     df_filtered = pd.DataFrame()
-    remaining_df = pd.DataFrame() # これはあくまで「一度も回答していない単語」
-    
+    remaining_df = pd.DataFrame() # これはあくまで「未回答の単語」
+
     if st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
         df_filtered, remaining_df = quiz_app.filter_data()
     else:
@@ -654,19 +660,14 @@ def main():
     quiz_mode_options = ["未回答", "苦手", "復習"]
     
     def on_quiz_mode_change():
-        # Streamlitのラジオボタンは、keyを指定した場合、
-        # st.session_state[key] に選択された値が自動的に格納されます。
-        # なので、ここではその値を使って `quiz_mode` を更新します。
-        
         st.session_state.quiz_mode = st.session_state.selected_quiz_mode
         st.session_state.current_quiz = None # モードが変更されたら現在のクイズをリセット
         st.session_state.quiz_answered = False # 回答済みフラグもリセット
 
-    # ここで戻り値を直接代入せず、`key` 引数のみを使用します。
     st.sidebar.radio(
         "💡 **どの問題を解きますか？**",
         options=quiz_mode_options,
-        key="selected_quiz_mode", # このkeyによって st.session_state.selected_quiz_mode が自動的に更新されます。
+        key="selected_quiz_mode", 
         index=quiz_mode_options.index(st.session_state.quiz_mode) if st.session_state.quiz_mode in quiz_mode_options else 0,
         on_change=on_quiz_mode_change
     )
@@ -679,28 +680,27 @@ def main():
         if st.session_state.quiz_df is None or st.session_state.quiz_df.empty:
             message = "クイズを開始するには、まず有効な学習データをロードしてください。"
         elif st.session_state.selected_quiz_mode == "未回答":
-            if not remaining_df.empty:
+            if not remaining_df.empty: # 〇×結果がブランクの単語があるか
                 can_start_quiz = True
-                message = "まだ回答していない単語があります。クイズを開始しましょう！"
+                message = f"現在のフィルター条件で、まだ回答していない単語が **{len(remaining_df)} 件** あります。クイズを開始しましょう！"
             else:
-                message = "現在のフィルター条件で、まだ回答していない単語はありません。モードを変更するか、フィルターを解除してください。"
+                message = "現在のフィルター条件に一致する、まだ回答していない単語はありません。フィルターを解除するか、別のモードを選択してください。"
         elif st.session_state.selected_quiz_mode == "苦手":
-            # 苦手な単語（不正解回数 > 正解回数 または 正解回数 <= 3）が存在するかチェック
-            # このチェックはload_quiz内でも行われるが、ボタン表示のためにここでも簡易的にチェック
-            struggled_exists = len(df_filtered[
-                (df_filtered["不正解回数"] > df_filtered["正解回数"]) |
-                (df_filtered["正解回数"] <= 3)
-            ]) > 0
+            # 苦手な単語（不正解回数 > 正解回数 または 正解回数 <= 3、かつ回答履歴がある）が存在するかチェック
+            struggled_exists_count = len(df_filtered[
+                (df_filtered['〇×結果'] != '') & # 回答履歴がある単語に限定
+                ((df_filtered["不正解回数"] > df_filtered["正解回数"]) | (df_filtered["正解回数"] <= 3))
+            ])
             
-            if struggled_exists:
+            if struggled_exists_count > 0:
                 can_start_quiz = True
-                message = "苦手な単語が残っています。克服しましょう！"
+                message = f"現在のフィルター条件で、苦手な単語（不正解が多いか正解3回以下）が **{struggled_exists_count} 件** 残っています。克服しましょう！"
             else:
-                message = "現在のフィルター条件で、苦手な単語は見つかりませんでした。モードを変更してください。"
+                message = "現在のフィルター条件に一致する、苦手な単語は見つかりませんでした。フィルターを解除するか、別のモードを選択してください。"
         elif st.session_state.selected_quiz_mode == "復習":
             if not df_filtered.empty:
                 can_start_quiz = True
-                message = "全ての単語をランダムに復習します。知識を定着させましょう！"
+                message = f"現在のフィルター条件で、合計 **{len(df_filtered)} 件** の単語があります。全ての単語をランダムに復習します。知識を定着させましょう！"
             else:
                 message = "現在のフィルター条件に一致する単語がありません。フィルターを変更してください。"
         
@@ -725,8 +725,6 @@ def main():
         else:
             st.info("クイズを開始するには、まず有効な学習データをロードしてください。") 
     elif st.session_state.current_quiz is None:
-        # ここでは、詳細なメッセージはサイドバーのロジックで表示されるため、
-        # シンプルな開始指示に留めるか、何も表示しない
         st.info("出題モードを選択し、サイドバーの「クイズ開始」ボタンをクリックしてください。")
     else:
         quiz_app.display_quiz(df_filtered, remaining_df)
