@@ -32,11 +32,22 @@ def set_custom_css():
             margin-bottom: 0.8rem;
         }
         
-        /* ボタンのスタイル調整 */
+        /* ボタンのスタイル調整（幅をデフォルトに戻す） */
         div.stButton > button {
-            width: 100%; /* ボタン幅を親要素に合わせる */
+            /* width: 100%; この行を削除またはコメントアウト */
             margin-bottom: 10px; /* ボタン間の余白 */
         }
+        /* ダウンロードボタンのリセットボタンが隣接するように調整 */
+        .stDownloadButton, .stButton {
+            margin-right: 5px; /* ボタン間の右マージンを調整 */
+        }
+        .stDownloadButton button, .stButton button {
+            min-width: unset; /* ボタンの最小幅をリセット */
+            width: auto; /* 幅をコンテンツに合わせる */
+            padding-left: 1rem; /* 左右のパディング */
+            padding-right: 1rem;
+        }
+
 
         /* 水平線（HR）のスタイル調整 */
         hr {
@@ -118,14 +129,12 @@ class QuizApp:
         self.initial_df = self._process_df_types(original_df.copy())
 
         # アプリ起動時の quiz_df 初期ロードロジックを、セッション状態に基づいて実行
-        # data_source_selection が "アップロード" で、かつファイルがアップロードされていない場合は、
-        # quiz_df は None のままにする（メインエリアでメッセージが表示される）
         if st.session_state.quiz_df is None:
             if st.session_state.data_source_selection == "初期データ":
                 self._load_initial_data()
             elif st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is not None:
                 self._load_uploaded_data()
-            # それ以外の場合（アップロードが選択されているがファイルがない場合など）は quiz_df は None のまま
+            # アップロードが選択されているがファイルがない場合は quiz_df は None のまま
 
     def _initialize_session(self):
         """セッション状態をデフォルト値で初期化します。既に存在する場合は更新しません。"""
@@ -151,7 +160,6 @@ class QuizApp:
                 (st.session_state.quiz_df['正解回数'] > 0) | (st.session_state.quiz_df['不正解回数'] > 0)
             ]["単語"].tolist())
             self._reset_quiz_state_only() 
-        # ここからフォールバックロジックを完全に削除
 
     def _process_df_types(self, df: pd.DataFrame) -> pd.DataFrame:
         """DataFrameに対して、必要なカラムの型変換と初期化を適用します。"""
@@ -498,7 +506,7 @@ class QuizApp:
             df_to_save['次回実施予定日時'] = df_to_save['次回実施予定日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
 
         csv_quiz_data = df_to_save.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-        st.sidebar.download_button("📥 **現在の学習データをダウンロード**", data=csv_quiz_data, file_name=file_name, mime="text/csv")
+        return csv_quiz_data, file_name # ボタン生成のためにデータを返す
 
     def handle_upload_logic(self, uploaded_file):
         """アップロードされたファイルの処理ロジックをカプセル化。"""
@@ -554,6 +562,7 @@ def main():
     st.title("📝 IT用語クイズアプリ")
     st.markdown("毎日少しずつIT用語を学習し、知識を定着させましょう！")
 
+    # --- サイドバーのレイアウト調整 ---
     st.sidebar.header("設定とデータ")
     
     data_source_options_radio = ["アップロード", "初期データ"]
@@ -564,15 +573,12 @@ def main():
             
             if st.session_state.data_source_selection == "初期データ":
                 quiz_app._load_initial_data()
-                # st.sidebar.success("✅ 初期データに切り替えました。") # この行を削除
                 st.session_state.uploaded_df_temp = None
                 st.session_state.uploaded_file_name = None
                 st.session_state.uploaded_file_size = None
             else: # "アップロード"が選択された場合
                 if st.session_state.uploaded_df_temp is not None:
                     quiz_app._load_uploaded_data()
-                    # st.sidebar.success(f"✅ アップロードされたデータ ({st.session_state.uploaded_file_name}) を適用しました。") # この行を削除
-                # else: ここに `st.sidebar.info("CSVファイルをアップロードしてください。")` があったが削除済み
             
             st.rerun() 
 
@@ -597,15 +603,24 @@ def main():
 
     st.sidebar.markdown("---") 
 
-    if st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
-        quiz_app.offer_download()
+    # ダウンロードとリセットボタンを横並びにする
+    col_dl, col_reset = st.sidebar.columns(2)
+    with col_dl:
+        if st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
+            csv_data, file_name = quiz_app.offer_download()
+            st.download_button(
+                "📥 **学習データをダウンロード**", 
+                data=csv_data, 
+                file_name=file_name, 
+                mime="text/csv",
+                key="download_button"
+            )
+    with col_reset:
+        if st.sidebar.button("🔄 **学習履歴をリセット**", help="現在使用しているデータソースの学習の進捗（正解/不正解回数、回答済み単語）を初期状態に戻します。", key="reset_button"):
+            quiz_app._reset_learning_history() 
 
     st.sidebar.markdown("---") 
     
-    if st.sidebar.button("🔄 **現在のデータの学習履歴をリセット**", help="現在使用しているデータソースの学習の進捗（正解/不正解回数、回答済み単語）を初期状態に戻します。", key="reset_button"):
-        quiz_app._reset_learning_history() 
-
-    st.sidebar.markdown("---") 
     st.sidebar.header("クイズの絞り込み")
     
     df_filtered = pd.DataFrame()
@@ -614,8 +629,7 @@ def main():
     if st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
         df_filtered, remaining_df = quiz_app.filter_data()
     else:
-        # ここではメッセージを出さず、メインコンテンツエリアのメッセージに任せる
-        pass
+        pass # メッセージはメインエリアで制御
 
     if st.session_state.current_quiz is None: 
         if not df_filtered.empty and len(remaining_df) > 0:
@@ -633,12 +647,12 @@ def main():
 
     st.markdown("---") 
     
+    # --- メインコンテンツエリアのメッセージ制御 ---
     if st.session_state.quiz_df is None or st.session_state.quiz_df.empty:
-        # メインコンテンツエリアで、quiz_dfがNoneの場合に統一してメッセージを出す
         if st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is None:
-            st.info("アップロードモードが選択されていますが、まだファイルがアップロードされていません。CSVファイルをアップロードしてください。")
+            st.info("アップロードモードが選択されていますが、まだファイルがアップロードされていません。サイドバーからCSVファイルをアップロードしてください。")
         else:
-            st.info("クイズを開始するには、まず有効な学習データをロードしてください。") # 通常の初期データロード失敗時など
+            st.info("クイズを開始するには、まず有効な学習データをロードしてください。") 
     elif st.session_state.current_quiz is None:
         if len(df_filtered) > 0 and len(remaining_df) > 0:
             st.info("データがロードされました！サイドバーの「クイズ開始」ボタンをクリックしてください。")
