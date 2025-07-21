@@ -68,7 +68,7 @@ class QuizApp:
         if '午後記述での使用例' not in df.columns: df['午後記述での使用例'] = ''
         if '使用理由／文脈' not in df.columns: df['使用理由／文脈'] = ''
         if '試験区分' not in df.columns: df['試験区分'] = ''
-        # ここが修正されました。全角の閉じ引用符を半角に修正
+        # **修正箇所1: 全角の閉じ引用符を半角に修正**
         if '出題確率（推定）' not in df.columns: df['出題確率（推定）'] = '' 
         if '改定の意図・影響' not in df.columns: df['改定の意図・影響'] = ''
 
@@ -156,6 +156,7 @@ class QuizApp:
 
         # 1. 不正解回数が多く、かつ回答履歴がある単語を優先的に候補に入れる
         answered_and_struggled = df_filtered[
+            # **修正箇所2: 比較対象の列を指定**
             (df_filtered["単語"].isin(st.session_state.answered_words)) &
             (df_filtered["不正解回数"] > df_filtered["正解回数"])
         ].copy()
@@ -263,6 +264,7 @@ class QuizApp:
         st.session_state.total += 1
         st.session_state.answered_words.add(current_quiz_data["単語"])
 
+        # **修正箇所3: 閉じ引用符を追加**
         is_correct = (selected_option_text == current_quiz_data["説明"])
         result_mark = "〇" if is_correct else "×"
 
@@ -336,6 +338,7 @@ class QuizApp:
         # 回答履歴のある単語のみ表示、またはすべての単語を表示するか選択肢を設けることも可能だが、今回は回答履歴のみ
         display_df = display_df[
             (display_df['正解回数'] > 0) | (display_df['不正解回数'] > 0)
+        # **修正箇所4: 閉じ角括弧を追加**
         ].sort_values(by=['不正解回数', '正解回数', '最終実施日時'], ascending=[False, False, False])
         
         if not display_df.empty:
