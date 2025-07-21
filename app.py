@@ -104,7 +104,7 @@ class QuizApp:
         self.defaults = {
             "total": 0,
             "correct": 0,
-            "answered_words": set(),
+            "answered_words": set(), # これは、一度でも回答された単語のユニークリスト（正解/不正解問わず）
             "latest_result": "",
             "latest_correct_description": "",
             "current_quiz": None,
@@ -145,6 +145,7 @@ class QuizApp:
     def _load_initial_data(self):
         """初期データをquiz_dfにロードします。"""
         st.session_state.quiz_df = self.initial_df.copy()
+        # answered_wordsは正誤に関わらず「一度でも回答した単語」を追跡し続ける
         st.session_state.answered_words = set(st.session_state.quiz_df[
             (st.session_state.quiz_df['正解回数'] > 0) | (st.session_state.quiz_df['不正解回数'] > 0)
         ]["単語"].tolist())
@@ -154,6 +155,7 @@ class QuizApp:
         """アップロードされたデータをquiz_dfにロードします。"""
         if st.session_state.uploaded_df_temp is not None:
             st.session_state.quiz_df = st.session_state.uploaded_df_temp.copy()
+            # answered_wordsは正誤に関わらず「一度でも回答した単語」を追跡し続ける
             st.session_state.answered_words = set(st.session_state.quiz_df[
                 (st.session_state.quiz_df['正解回数'] > 0) | (st.session_state.quiz_df['不正解回数'] > 0)
             ]["単語"].tolist())
@@ -238,6 +240,7 @@ class QuizApp:
         if st.session_state.filter_level != "すべて":
             df = df[df["シラバス改定有無"] == st.session_state.filter_level]
 
+        # 既に回答した（正誤問わず）単語は出題候補から除外
         remaining_df = df[~df["単語"].isin(st.session_state.answered_words)]
 
         return df, remaining_df
@@ -326,7 +329,7 @@ class QuizApp:
 
             if submit_button and not st.session_state.quiz_answered:
                 self._handle_answer_submission(selected_option_text, current_quiz_data)
-                st.rerun() # フォームのsubmitボタンではst.rerun()が必要な場合があります。
+                st.rerun() # フォームのsubmitボタンではst.rerun()が必要です。
 
         if st.session_state.quiz_answered:
             st.markdown(f"### {st.session_state.latest_result}")
@@ -383,7 +386,7 @@ class QuizApp:
         st.session_state.debug_message_quiz_start = f"DEBUG: _handle_answer_submission 開始。選択肢='{selected_option_text}'"
 
         st.session_state.total += 1
-        st.session_state.answered_words.add(current_quiz_data["単語"])
+        st.session_state.answered_words.add(current_quiz_data["単語"]) # 正誤問わず、回答された単語として記録
 
         is_correct = (selected_option_text == current_quiz_data["説明"])
         result_mark = "〇" if is_correct else "×"
@@ -430,7 +433,9 @@ class QuizApp:
         st.sidebar.subheader("学習の進捗")
         
         total_filtered_words = len(df_filtered)
-        answered_filtered_words = len(df_filtered[df_filtered["単語"].isin(st.session_state.answered_words)])
+        
+        # 回答済み (〇) の単語数をカウントする
+        answered_filtered_words = len(df_filtered[df_filtered["〇×結果"] == '〇'])
 
         if total_filtered_words == 0:
             st.sidebar.info("現在のフィルター条件に一致する単語がありません。")
@@ -460,6 +465,7 @@ class QuizApp:
         cols_to_display = [col for col in display_cols if col in st.session_state.quiz_df.columns]
         display_df = st.session_state.quiz_df[cols_to_display].copy()
         
+        # 正解または不正解の履歴がある単語のみを表示
         display_df = display_df[
             (display_df['正解回数'] > 0) | (display_df['不正解回数'] > 0)
         ].sort_values(by=['不正解回数', '正解回数', '最終実施日時'], ascending=[False, False, False])
@@ -607,17 +613,22 @@ def main():
         pass 
 
     if st.session_state.current_quiz is None: 
+        # remaining_df は「まだ一度も回答していない単語」のリスト
+        # クイズ開始ボタンは、回答すべき単語が残っている場合にのみ表示
         if not df_filtered.empty and len(remaining_df) > 0:
             if st.sidebar.button("▶️ **クイズ開始**", key="sidebar_start_quiz_button"):
                 quiz_app.load_quiz(df_filtered, remaining_df)
                 st.rerun()
+        # フィルターされた単語全体は存在するが、未回答の単語がない場合
         elif len(df_filtered) > 0 and len(remaining_df) == 0:
              st.sidebar.info("現在のフィルター条件のすべての問題に回答しました。")
+        # フィルター条件に一致する単語が全くない場合
         elif len(df_filtered) == 0: 
              st.sidebar.info("現在のフィルター条件に一致する単語がありません。フィルターを変更してください。")
     
     st.sidebar.markdown("---") 
 
+    # 学習進捗は「〇×結果」が「〇」の単語を数えるように変更済み
     quiz_app.show_progress(df_filtered)
 
     st.markdown("---") 
