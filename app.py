@@ -530,10 +530,14 @@ class QuizApp:
 
             csv_data = convert_df_to_csv(st.session_state.quiz_df)
             
+            # 現在の日時を取得し、ファイル名に組み込む
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            file_name = f"TANGO{timestamp}.csv" # ここを修正
+
             st.download_button(
                 label="現在のデータをCSVでダウンロード",
                 data=csv_data,
-                file_name="quiz_data_with_results.csv",
+                file_name=file_name, # 修正後のファイル名を指定
                 mime="text/csv",
             )
         else:
