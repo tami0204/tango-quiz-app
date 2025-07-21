@@ -71,37 +71,4 @@ class QuizApp:
 
     def _reset_session_state(self):
         """セッション状態をデフォルト値にリセットします。"""
-        self._initialize_quiz_df_from_original() # quiz_dfを初期状態に戻す
-        
-        for key, val in self.defaults.items():
-            if key not in ["quiz_df", "filter_category", "filter_field", "filter_level"]:
-                st.session_state[key] = val if not isinstance(val, set) else set()
-        st.session_state.filter_category = "すべて"
-        st.session_state.filter_field = "すべて"
-        st.session_state.filter_level = "すべて" # 'シラバス改定有無'フィルターもリセット
-
-        st.success("✅ セッションをリセットし、学習データを初期化しました。")
-        st.rerun()
-
-    def filter_data(self):
-        """データフレームをフィルターし、残りの単語を返します。"""
-        df = st.session_state.quiz_df.copy()
-
-        # カテゴリフィルター
-        categories = ["すべて"] + df["カテゴリ"].dropna().unique().tolist()
-        st.session_state.filter_category = st.sidebar.selectbox(
-            "カテゴリで絞り込み", categories, index=categories.index(st.session_state.filter_category) if st.session_state.filter_category in categories else 0
-        )
-        if st.session_state.filter_category != "すべて":
-            df = df[df["カテゴリ"] == st.session_state.filter_category]
-
-        # 分野フィルター
-        fields = ["すべて"] + df["分野"].dropna().unique().tolist()
-        st.session_state.filter_field = st.sidebar.selectbox(
-            "分野で絞り込み", fields, index=fields.index(st.session_state.filter_field) if st.session_state.filter_field in fields else 0
-        )
-        if st.session_state.filter_field != "すべて":
-            df = df[df["分野"] == st.session_state.filter_field]
-
-        # シラバス改定有無のフィルター
-        # 'シラバス改定有無
+        self._initialize_quiz_df_from_original() # quiz_dfを初期状態
