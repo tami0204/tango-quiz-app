@@ -62,7 +62,7 @@ class QuizApp:
         if 'シラバス改定有無' not in df.columns:
             df['シラバス改定有無'] = ''
         else:
-            df['シラバス改定有無'] = df['シlaバス改定有無'].astype(str).replace('nan', '')
+            df['シラバス改定有無'] = df['シラバス改定有無'].astype(str).replace('nan', '')
             
         # その他の必須ではないが、データに存在する可能性のあるカラムの処理
         if '午後記述での使用例' not in df.columns: df['午後記述での使用例'] = ''
@@ -202,8 +202,7 @@ class QuizApp:
         num_wrong_choices = min(3, len(other_descriptions))
         
         # 間違った選択肢をランダムに選択
-        # This is line 197. Ensure no extra characters or odd spacing here.
-        wrong_choices = random.sample(other_descriptions, num_wrong_choices) 
+        wrong_choices = random.sample(other_descriptions, num_wrong_choices)
 
         choices = wrong_choices + [correct_description]
         random.shuffle(choices)
@@ -403,117 +402,4 @@ class QuizApp:
                     return
 
                 # アップロードされたDataFrameに型変換を適用し、不足する学習履歴カラムを初期化
-                processed_uploaded_df = self._process_df_types(uploaded_df.copy(deep=True)) # deep=Trueで完全なコピーを確保
-                
-                # 全てのセッションステートをデフォルト値にリセットし、新しいデータで初期化
-                st.session_state.total = 0
-                st.session_state.correct = 0
-                st.session_state.latest_result = ""
-                st.session_state.latest_correct_description = ""
-                st.session_state.current_quiz = None
-                st.session_state.quiz_answered = False
-                st.session_state.quiz_choice_index = 0
-                st.session_state.filter_category = "すべて"
-                st.session_state.filter_field = "すべて"
-                st.session_state.filter_level = "すべて"
-                
-                # ここでアップロードされたデータを現在の学習データとして完全に置き換える
-                st.session_state.quiz_df = processed_uploaded_df.copy(deep=True) # deep=Trueで完全なコピーを確保
-                
-                # **重要**: アップロード時に answered_words を完全にリセット
-                # これにより、アップロードされた単語が全て未回答として扱われる
-                st.session_state.answered_words = set() 
-
-                st.success("✅ 学習データを正常にロードしました！")
-                st.write(f"DEBUG: アップロード成功後のセッション状態 - total={st.session_state.total}, quiz_answered={st.session_state.quiz_answered}, answered_words_count={len(st.session_state.answered_words)}")
-                st.rerun() # 変更を反映するために再実行
-            except Exception as e:
-                st.error(f"CSVファイルの読み込み中にエラーが発生しました: {e}")
-                st.info("ファイルが正しいCSV形式であるか、またはエンコーディングが 'utf-8-sig' であるか確認してください。")
-                st.info("特に '正解回数' や '不正解回数' カラムに、数値以外の文字や空欄がないかご確認ください。")
-
-
-    def reset_session_button(self):
-        """セッションリセットボタンを表示します。"""
-        if st.sidebar.button("🔄 **学習データをリセット**"):
-            self._reset_session_state()
-
-    def run(self):
-        st.set_page_config(layout="wide", page_title="用語クイズアプリ")
-        st.title("🥷 用語クイズアプリ")
-
-        # --- DEBUGGING INFORMATION ---
-        st.sidebar.subheader("DEBUG情報 (管理者用)")
-        st.sidebar.write(f"quiz_answered: {st.session_state.quiz_answered}")
-        st.sidebar.write(f"total: {st.session_state.total}")
-        st.sidebar.write(f"correct: {st.session_state.correct}")
-        st.sidebar.write(f"answered_words_count: {len(st.session_state.answered_words)}")
-        st.sidebar.write(f"current_quiz is None: {st.session_state.current_quiz is None}")
-
-        if st.session_state.quiz_df is not None:
-            st.sidebar.write(f"quiz_df shape: {st.session_state.quiz_df.shape}")
-            # quiz_dfの先頭5行と、特に正解・不正解回数カラムの情報を表示
-            st.sidebar.write("quiz_df head (学習履歴カラム):")
-            st.sidebar.dataframe(st.session_state.quiz_df[['単語', '正解回数', '不正解回数', '〇×結果']].head(5), use_container_width=True)
-        # --- DEBUGGING INFORMATION END ---
-
-        st.sidebar.header("設定")
-        self.upload_data()
-        self.offer_download()
-        self.reset_session_button()
-
-        st.sidebar.markdown("---")
-        st.sidebar.header("フィルター")
-        df_filtered, remaining_df = self.filter_data()
-
-        st.markdown("---")
-
-        self.show_progress(df_filtered)
-
-        # current_quizがNoneの場合にのみ新しいクイズをロード
-        if st.session_state.current_quiz is None and not remaining_df.empty:
-            st.write("DEBUG: current_quizがNoneであり、未出題単語があるため、新しいクイズをロードします。")
-            self.load_quiz(df_filtered, remaining_df)
-        elif st.session_state.current_quiz is None and remaining_df.empty and st.session_state.total > 0:
-            # フィルターされた問題がすべて回答済みで、かつ過去に問題が出題された場合
-            st.write("DEBUG: すべての単語が回答済み、またはフィルター条件に一致する単語がありません。")
-            self.show_completion()
-        elif st.session_state.current_quiz is None and remaining_df.empty and st.session_state.total == 0:
-             st.info("選択されたフィルター条件に一致する単語がないか、データがありません。")
-             st.info("フィルターを変更するか、学習データをリセットしてください。")
-             st.write("DEBUG: current_quizがNoneであり、未出題単語がないため、クイズをロードできません。")
-
-
-        if st.session_state.current_quiz is not None:
-            st.write("DEBUG: current_quizがNoneではないため、クイズを表示します。")
-            self.display_quiz(df_filtered, remaining_df)
-        else:
-            st.write("DEBUG: current_quizがNoneのため、クイズは表示されません。")
-
-
-        st.markdown("---")
-        self.display_statistics()
-
-# アプリケーションの開始点
-try:
-    data_file_path = "tango.csv"
-    
-    if not os.path.exists(data_file_path):
-        st.error(f"エラー: '{data_file_path}' が見つかりません。")
-        st.info("GitHubリポジトリの `app.py` と同じフォルダに、データファイル「tango.csv」があるか確認してください。")
-        st.info("また、このアプリはPython 3.8以上で動作します。")
-        st.stop()
-
-    df = pd.read_csv(data_file_path, encoding="utf-8-sig")
-
-except Exception as e:
-    st.error(f"データファイル **'tango.csv'** の読み込み中に致命的なエラーが発生しました: {e}")
-    st.info("このエラーは、アプリ起動時に使用するメインデータファイルに問題があることを示しています。")
-    st.info("データファイル **'tango.csv'** の形式が正しいか、特に以下の点を確認してください:")
-    st.markdown("- **エンコーディングが 'utf-8-sig' であること**")
-    st.markdown("- **`単語`, `説明`, `カテゴリ`, `分野` の各必須カラムが正しく存在すること**")
-    st.markdown("- **`正解回数` や `不正解回数` カラムに数値以外の文字や空欄がないこと (もし空欄なら0として扱われますが、不正な文字はエラーになります)**")
-    st.stop()
-
-app = QuizApp(df)
-app.run()
+                processed_uploaded_df = self._process_df_types(uploaded_df.copy(deep
