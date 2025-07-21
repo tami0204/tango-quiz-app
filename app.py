@@ -37,7 +37,6 @@ class QuizApp:
             if st.session_state.data_source_selection == "初期データ":
                 self._initialize_quiz_df_from_original()
             elif st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is None:
-                # アップロード待ち状態だが、一旦初期データをロードして画面を維持
                 self._initialize_quiz_df_from_original() 
             elif st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is not None:
                 st.session_state.quiz_df = st.session_state.uploaded_df_temp.copy()
@@ -66,7 +65,8 @@ class QuizApp:
         if '午後記述での使用例' not in df.columns: df['午後記述での使用例'] = ''
         if '使用理由／文脈' not in df.columns: df['使用理由／文脈'] = ''
         if '試験区分' not in df.columns: df['試験区分'] = ''
-        if '出題確率（推定）' not in df.columns: df['出題確率（推定）』 = ''
+        # 💡 修正点: 全角引用符 '’' を半角引用符 ''' に修正
+        if '出題確率（推定）' not in df.columns: df['出題確率（推定）'] = ''
         if '改定の意図・影響' not in df.columns: df['改定の意図・影響'] = ''
 
         return df
@@ -398,7 +398,6 @@ class QuizApp:
         
         if uploaded_file is not None:
             try:
-                # ファイル名とサイズが変更された場合のみ再読み込み
                 if st.session_state.uploaded_file_name != uploaded_file.name or \
                    st.session_state.get('uploaded_file_size') != uploaded_file.size: 
                     
@@ -419,9 +418,8 @@ class QuizApp:
                     st.session_state.uploaded_file_name = uploaded_file.name
                     st.session_state.uploaded_file_size = uploaded_file.size
                     st.sidebar.success(f"✅ ファイル '{uploaded_file.name}' を一時的に読み込みました。")
-                    # ファイルが正常に読み込まれたら、アップロードデータに切り替える
                     st.session_state.data_source_selection = "アップロード"
-                    st.rerun() # 画面を更新してアップロードデータを適用
+                    st.rerun()
             except Exception as e:
                 st.sidebar.error(f"CSVファイルの読み込み中にエラーが発生しました。ファイル形式が正しいか確認してください: {e}")
                 st.session_state.uploaded_df_temp = None
@@ -458,7 +456,6 @@ def main():
         index=data_source_options_radio.index(st.session_state.data_source_selection) if st.session_state.data_source_selection in data_source_options_radio else 0
     )
 
-    # ラジオボタンの選択が変更された場合の処理
     if selected_source_radio != st.session_state.data_source_selection:
         st.session_state.data_source_selection = selected_source_radio
         
@@ -476,12 +473,8 @@ def main():
                 ]["単語"].tolist())
                 st.sidebar.success(f"✅ アップロードされたデータ ({st.session_state.uploaded_file_name}) を適用しました。")
             else:
-                # アップロードがまだで、この選択肢が選ばれた場合、警告メッセージのみ表示
                 st.sidebar.info("ファイルをアップロードしてください。")
-                # ここでは quiz_df を tango.csv に維持し、ユーザーにアップロードを促す状態にする
                 quiz_app._initialize_quiz_df_from_original() 
-                # selected_source_radio は既に 'アップロード' なので、強制的に '初期データ' に戻す必要はない
-                # st.session_state.data_source_selection = "初期データ" の行は削除
         
         for key in ["total", "correct", "latest_result", "latest_correct_description",
                     "current_quiz", "quiz_answered", "quiz_choice_index",
@@ -493,12 +486,10 @@ def main():
 
     st.sidebar.markdown("---")
 
-    # データソースの選択に応じてUIを出し分け
     if st.session_state.data_source_selection == "アップロード":
-        # 「ファイルをアップロードしてください。」というメッセージの下にアップローダーを表示
         quiz_app.upload_data() 
         if st.session_state.uploaded_df_temp is None:
-            st.sidebar.warning("まだ学習データがアップロードされていません。") # メッセージは残す
+            st.sidebar.warning("まだ学習データがアップロードされていません。")
     else: 
         st.sidebar.info("`tango.csv` (初期データ) を使用しています。")
     
