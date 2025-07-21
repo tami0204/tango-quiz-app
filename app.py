@@ -35,8 +35,7 @@ defaults = {
     "answered_words": set(),
     "debug_mode": False,
     "quiz_mode": "復習", # quiz_mode もここで初期化すること
-    # 新しく main_data_source_radio をデフォルトに追加 (ラジオボタンのキーに合わせる)
-    "main_data_source_radio": "初期データ",
+    "main_data_source_radio": "初期データ", # ラジオボタンのキーと同期
 }
 
 for key, val in defaults.items():
@@ -49,7 +48,7 @@ for key, val in defaults.items():
 # --- ここまでセッション状態の初期化ロジック ---
 
 
-# カスタムCSSの適用 (変更なし)
+# カスタムCSSの適用
 st.markdown("""
 <style>
     /* 全体のフォントを調整 */
@@ -161,7 +160,8 @@ st.markdown("""
 
 class QuizApp:
     def __init__(self):
-        pass
+        # セッション状態の初期化は、アプリの先頭で行うため、ここでは何もしない
+        pass 
 
     def _reset_quiz_state_only(self):
         """クイズの進行に関するセッションステートのみをリセットします。"""
@@ -177,6 +177,7 @@ class QuizApp:
     def _load_initial_data(self):
         """初期データをロードし、セッション状態に設定します。"""
         try:
+            # CSVファイルを直接読み込む (エンコーディング指定)
             df = pd.read_csv("tango.csv", encoding='utf-8')
             st.session_state.quiz_df = self._process_df_types(df)
             st.success("初期データをロードしました！")
@@ -251,7 +252,7 @@ class QuizApp:
                     # アップロードされたファイルをすぐにアクティブなデータソースとして設定
                     st.session_state.quiz_df = self._process_df_types(uploaded_df.copy())
                     st.session_state.data_source_selection = "アップロード" # データソースをアップロードに切り替える
-                    # st.session_state.main_data_source_radio = "アップロード" # <-- この行は不要
+                    # st.session_state.main_data_source_radio = "アップロード" # <-- この行は削除
                     self._reset_quiz_state_only()
                     st.success(f"'{uploaded_file.name}' をロードしました！")
                 except Exception as e:
@@ -270,7 +271,7 @@ class QuizApp:
             # もし現在アップロードデータが選択されていれば、初期データに戻すなどの処理も検討
             if st.session_state.data_source_selection == "アップロード":
                 st.session_state.data_source_selection = "初期データ"
-                # st.session_state.main_data_source_radio = "初期データ" # <-- この行は不要
+                # st.session_state.main_data_source_radio = "初期データ" # <-- この行は削除
                 self._load_initial_data()
 
 
@@ -300,9 +301,9 @@ class QuizApp:
         if st.session_state.quiz_mode == "未回答":
             if not remaining_df.empty:
                 quiz_candidates_df = remaining_df.assign(temp_weight=1) # 未回答単語はすべて等しい重み
-            else:
-                st.session_state.current_quiz = None
-                return
+            # else:
+            #     st.session_state.current_quiz = None # この部分はdisplay_quizで判断するため削除
+            #     return
 
         elif st.session_state.quiz_mode == "苦手":
             # 1. 不正解回数が正解回数を上回る、かつ回答済みの単語 (最優先)
@@ -325,26 +326,33 @@ class QuizApp:
                     low_correct_count_answered['temp_weight'] = low_correct_count_answered['正解回数'].apply(lambda x: 4 - x) 
                     quiz_candidates_df = pd.concat([quiz_candidates_df, low_correct_count_answered], ignore_index=True)
             
-            if quiz_candidates_df.empty:
-                st.session_state.current_quiz = None
-                return
+            # if quiz_candidates_df.empty: # この部分もdisplay_quizで判断するため削除
+            #     st.session_state.current_quiz = None
+            #     return
 
         elif st.session_state.quiz_mode == "復習":
             if not df_filtered.empty:
                 quiz_candidates_df = df_filtered.assign(temp_weight=1) # 全て等しい重みでランダム出題
-            else:
-                st.session_state.current_quiz = None
-                return
+            # else: # この部分もdisplay_quizで判断するため削除
+            #     st.session_state.current_quiz = None
+            #     return
         
+        # どのモードでもクイズ候補が全くない場合は None を設定し、display_quiz でメッセージを出す
+        if quiz_candidates_df.empty:
+            st.session_state.current_quiz = None
+            return
+
         quiz_candidates_df = quiz_candidates_df.sort_values(by='temp_weight', ascending=False).drop_duplicates(subset='単語', keep='first')
 
+        # 上記処理で quiz_candidates_df が空になる可能性があるので再度チェック
         if quiz_candidates_df.empty:
             st.session_state.current_quiz = None
             return
 
         weights = quiz_candidates_df['temp_weight'].tolist()
         
-        if sum(weights) == 0:
+        # 重みがすべて0の場合の対応 (weights.sum() == 0 より堅牢)
+        if all(w == 0 for w in weights):
             selected_quiz_row = quiz_candidates_df.sample(n=1).iloc[0]
         else:
             selected_quiz_row = quiz_candidates_df.sample(n=1, weights=weights).iloc[0]
@@ -438,8 +446,10 @@ class QuizApp:
             self.load_quiz(df_filtered, remaining_df)
             st.session_state.latest_result = "" # 新しい問題では結果をリセット
             st.session_state.latest_correct_description = ""
-            if st.session_state.debug_mode:
-                st.expander("デバッグ情報", expanded=False).write(st.session_state.debug_message_quiz_start)
+            # load_quiz が None を返した場合も、再描画してメッセージを表示させる
+            st.rerun() 
+            # if st.session_state.debug_mode: # 上で rerun() しているため、ここは実行されない
+            #     st.expander("デバッグ情報", expanded=False).write(st.session_state.debug_message_quiz_start)
 
         if st.session_state.current_quiz:
             st.markdown(f"### 単語: **{st.session_state.current_quiz['単語']}**")
@@ -480,11 +490,23 @@ class QuizApp:
                     self._handle_answer_submission(user_answer)
                     # 回答後に再描画を促す（結果表示のため）
                     st.rerun()
-        else:
+        else: # st.session_state.current_quiz が None の場合
             if st.session_state.quiz_df is None or st.session_state.quiz_df.empty:
                 st.info("データがロードされていません。サイドバーからデータソースを選択またはアップロードしてください。")
+            elif len(df_filtered) == 0: # フィルターによって候補が0になった場合
+                st.info("選択されたフィルター条件に合致する単語が見つかりませんでした。フィルター設定を変更してください。")
+            elif st.session_state.quiz_mode == "未回答" and len(remaining_df) == 0:
+                st.info("おめでとうございます！すべての未回答単語をクリアしました。フィルターを変更するか、別のクイズモードを試してください。")
+            elif st.session_state.quiz_mode == "苦手" and (df_filtered['不正解回数'] <= df_filtered['正解回数']).all() and (df_filtered['正解回数'] > 3).all():
+                st.info("「苦手」モードで出題すべき単語がありません。全ての苦手な単語を克服したようです！フィルターを変更するか、別のクイズモードを試してください。")
+            elif st.session_state.quiz_mode == "復習" and not df_filtered.empty:
+                # 「復習」モードでdf_filteredに単語があるのに current_quiz が None になることは
+                # load_quizのロジック上、通常はありえない。
+                # ただし、何らかの理由で load_quiz が単語を選べなかった場合のフォールバックとして残す。
+                st.info("復習する単語が見つかりませんでした。フィルター設定を変更するか、クイズモードを切り替えてください。")
             else:
-                st.info("選択されたフィルター条件に合致する単語が見つかりませんでした。フィルター設定を変更するか、クイズモードを切り替えてください。")
+                # 上記以外の、クイズ候補が見つからなかった場合（例: フィルターはかかっているが、特定のモードで選ばれないなど）
+                st.info("現在のクイズモードで出題できる単語が見つかりませんでした。フィルター設定を変更するか、別のクイズモードを試してください。")
                 
             if st.session_state.debug_mode:
                 st.expander("デバッグ情報", expanded=False).write("DEBUG: current_quiz is None.")
@@ -567,8 +589,6 @@ def main():
 
 
     # アプリケーションの初期ロード時に初期データをロード
-    # この部分は、上記の全体的な初期化と重複する可能性があるため、ロジックを見直す
-    # たとえば、quiz_dfがNoneの場合は、selected_source_radioに基づいてロードする
     # data_source_selection の初期値と on_change での処理により、
     # このブロックの大部分は不要になるか、よりシンプルなチェックで済むはず
     if st.session_state.quiz_df is None:
@@ -578,13 +598,13 @@ def main():
             quiz_app._load_uploaded_data()
 
 
-    # タブの作成 (変更なし)
+    # タブの作成
     tab1, tab2 = st.tabs(["クイズ", "データビューア"])
 
     with tab1:
         st.header("情報処理試験対策クイズ")
         
-        # クイズモードの選択 (変更なし)
+        # クイズモードの選択
         st.sidebar.header("🎯 クイズモード")
         quiz_modes = ["復習", "未回答", "苦手"]
         st.session_state.quiz_mode = st.sidebar.radio(
@@ -631,7 +651,7 @@ def main():
         else:
             st.sidebar.info("データがロードされていません。") 
         
-        # デバッグモードの切り替え (変更なし)
+        # デバッグモードの切り替え
         st.sidebar.markdown("---")
         st.sidebar.subheader("開発者ツール")
         st.session_state.debug_mode = st.sidebar.checkbox(
@@ -646,7 +666,7 @@ def main():
         st.header("登録データ一覧")
         quiz_app.display_data_viewer()
 
-    # フッターの表示 (変更なし)
+    # フッターの表示
     st.markdown("---")
     st.markdown("""
     <div style="text-align: center; margin-top: 20px; font-size: 0.8em; color: #666;">
