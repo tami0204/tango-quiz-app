@@ -199,24 +199,26 @@ class QuizApp:
         st.session_state.debug_message_error = ""
         st.session_state.debug_message_answer_end = ""
 
-    def _reset_learning_history(self):
-        """現在のquiz_dfの学習履歴をリセットし、フィルターもデフォルトに戻します。"""
-        st.session_state.quiz_df['〇×結果'] = ''
-        st.session_state.quiz_df['正解回数'] = 0
-        st.session_state.quiz_df['不正解回数'] = 0
-        st.session_state.quiz_df['最終実施日時'] = pd.NaT
-        st.session_state.quiz_df['次回実施予定日時'] = pd.NaT
+    # 学習履歴リセットボタンが不要になったため、このメソッドは呼び出されませんが、
+    # 機能を維持するために残しておくこともできます。今回は削除をしないままコメントアウトします。
+    # def _reset_learning_history(self):
+    #     """現在のquiz_dfの学習履歴をリセットし、フィルターもデフォルトに戻します。"""
+    #     st.session_state.quiz_df['〇×結果'] = ''
+    #     st.session_state.quiz_df['正解回数'] = 0
+    #     st.session_state.quiz_df['不正解回数'] = 0
+    #     st.session_state.quiz_df['最終実施日時'] = pd.NaT
+    #     st.session_state.quiz_df['次回実施予定日時'] = pd.NaT
 
-        st.session_state.answered_words = set()
+    #     st.session_state.answered_words = set()
 
-        self._reset_quiz_state_only() 
+    #     self._reset_quiz_state_only() 
 
-        st.session_state.filter_category = "すべて"
-        st.session_state.filter_field = "すべて"
-        st.session_state.filter_level = "すべて"
+    #     st.session_state.filter_category = "すべて"
+    #     st.session_state.filter_field = "すべて"
+    #     st.session_state.filter_level = "すべて"
 
-        st.success("✅ 現在の学習データの進捗をリセットしました。")
-        st.rerun()
+    #     st.success("✅ 現在の学習データの進捗をリセットしました。")
+    #     st.rerun()
 
     def filter_data(self):
         """データフレームをフィルターし、残りの単語を返します。
@@ -601,21 +603,17 @@ def main():
     if uploaded_file is not None:
         quiz_app.handle_upload_logic(uploaded_file)
 
-    # ダウンロードとリセットボタンを横並びにする
-    col_dl, col_reset = st.sidebar.columns([0.6, 0.4]) # 幅の比率を調整
-    with col_dl:
-        if st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
-            csv_data, file_name = quiz_app.offer_download()
-            st.download_button(
-                "📥 **結果ダウンロード**", # ここを変更しました
-                data=csv_data, 
-                file_name=file_name, 
-                mime="text/csv",
-                key="download_button"
-            )
-    with col_reset:
-        if st.button("🔄 **学習履歴をリセット**", help="現在使用しているデータソースの学習の進捗（正解/不正解回数、回答済み単語）を初期状態に戻します。", key="reset_button"):
-            quiz_app._reset_learning_history() 
+    # 学習履歴リセットボタンの表示を削除
+    if st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
+        csv_data, file_name = quiz_app.offer_download()
+        st.sidebar.download_button( # download_button は col_dl の外に出す（単独で表示するため）
+            "📥 **結果ダウンロード**", 
+            data=csv_data, 
+            file_name=file_name, 
+            mime="text/csv",
+            key="download_button"
+        )
+    # 以前 col_reset にあった学習履歴リセットボタンのコードは削除されました
 
     st.sidebar.markdown("---") 
 
