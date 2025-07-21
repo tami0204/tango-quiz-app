@@ -581,11 +581,10 @@ def main():
     with tab1:
         st.header("情報処理試験対策クイズ")
         
-        # クイズモードの選択 (ラベルを削除)
-        st.sidebar.header("🎯 クイズモード")
+        # クイズモードの選択 (ヘッダーを削除し、ラジオボタンのラベルに設定)
         quiz_modes = ["復習", "未回答", "苦手"]
         st.session_state.quiz_mode = st.sidebar.radio(
-            "", # <-- ここを空文字列に変更してラベルを削除
+            "**🎯 クイズモードを選択**", # <-- ここでヘッダーとラベルを統合
             quiz_modes, 
             index=quiz_modes.index(st.session_state.quiz_mode) if st.session_state.quiz_mode in quiz_modes else 0,
             key="quiz_mode_radio"
