@@ -654,17 +654,19 @@ def main():
     quiz_mode_options = ["未回答", "苦手", "復習"]
     
     def on_quiz_mode_change():
-        # モードが変更されたら現在のクイズをリセットし、新しいモードで次の問題をロードできるようにする
-        if st.session_state.selected_quiz_mode != st.session_state.quiz_mode:
-            st.session_state.quiz_mode = st.session_state.selected_quiz_mode
-            st.session_state.current_quiz = None # 現在のクイズをリセット
-            st.session_state.quiz_answered = False # 回答済みフラグもリセット
-            # st.rerun() はStreamlitの自動再実行に任せる
+        # Streamlitのラジオボタンは、keyを指定した場合、
+        # st.session_state[key] に選択された値が自動的に格納されます。
+        # なので、ここではその値を使って `quiz_mode` を更新します。
+        
+        st.session_state.quiz_mode = st.session_state.selected_quiz_mode
+        st.session_state.current_quiz = None # モードが変更されたら現在のクイズをリセット
+        st.session_state.quiz_answered = False # 回答済みフラグもリセット
 
-    st.session_state.selected_quiz_mode = st.sidebar.radio(
+    # ここで戻り値を直接代入せず、`key` 引数のみを使用します。
+    st.sidebar.radio(
         "💡 **どの問題を解きますか？**",
         options=quiz_mode_options,
-        key="selected_quiz_mode",
+        key="selected_quiz_mode", # このkeyによって st.session_state.selected_quiz_mode が自動的に更新されます。
         index=quiz_mode_options.index(st.session_state.quiz_mode) if st.session_state.quiz_mode in quiz_mode_options else 0,
         on_change=on_quiz_mode_change
     )
