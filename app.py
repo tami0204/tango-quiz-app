@@ -118,6 +118,7 @@ class QuizApp:
             "filter_category": "すべて",
             "filter_field": "すべて",
             "filter_level": "すべて",
+            "quiz_mode": "未回答", # 新しく追加したデフォルトモード
             "debug_message_quiz_start": "",
             "debug_message_answer_update": "",
             "debug_message_error": "",
@@ -241,42 +242,80 @@ class QuizApp:
             df = df[df["シラバス改定有無"] == st.session_state.filter_level]
 
         # 既に回答した（正誤問わず）単語は出題候補から除外
+        # このremaining_dfは「未回答」モードの主要な候補となる
         remaining_df = df[~df["単語"].isin(st.session_state.answered_words)]
 
         return df, remaining_df
 
     def load_quiz(self, df_filtered: pd.DataFrame, remaining_df: pd.DataFrame):
-        """クイズの単語をロードします。不正解回数や最終実施日時を考慮します。"""
+        """
+        クイズの単語をロードします。選択されたモードに基づいて出題ロジックが変更されます。
+        """
         if st.session_state.quiz_answered: 
             st.session_state.quiz_answered = False 
             st.session_state.quiz_choice_index += 1 
 
         quiz_candidates_df = pd.DataFrame()
+        
+        # モードに応じた候補単語の選択
+        if st.session_state.quiz_mode == "未回答":
+            # まだ回答されていない単語のみを候補とする
+            if not remaining_df.empty:
+                quiz_candidates_df = remaining_df.copy()
+                quiz_candidates_df['temp_weight'] = 1 # 未回答単語はすべて等しい重み
+            else:
+                st.info("現在のフィルター条件で、まだ回答していない単語はありません。モードを変更するか、フィルターを解除してください。")
+                st.session_state.current_quiz = None
+                return
 
-        answered_and_struggled = df_filtered[
-            (df_filtered["単語"].isin(st.session_state.answered_words)) &
-            (df_filtered["不正解回数"] > df_filtered["正解回数"])
-        ].copy()
+        elif st.session_state.quiz_mode == "苦手":
+            # 不正解回数が正解回数を上回る単語を最優先
+            answered_and_struggled = df_filtered[
+                (df_filtered["単語"].isin(st.session_state.answered_words)) &
+                (df_filtered["不正解回数"] > df_filtered["正解回数"])
+            ].copy()
+            if not answered_and_struggled.empty:
+                answered_and_struggled['temp_weight'] = answered_and_struggled['不正解回数'] + 5 # 高い重み
+                quiz_candidates_df = pd.concat([quiz_candidates_df, answered_and_struggled], ignore_index=True)
 
-        if not answered_and_struggled.empty:
-            answered_and_struggled['temp_weight'] = answered_and_struggled['不正解回数'] + 1
-            quiz_candidates_df = pd.concat([quiz_candidates_df, answered_and_struggled], ignore_index=True)
-
-        if not remaining_df.empty:
-            remaining_df_copy = remaining_df.copy()
-            remaining_df_copy['temp_weight'] = 1
-            quiz_candidates_df = pd.concat([quiz_candidates_df, remaining_df_copy], ignore_index=True)
+            # 正解回数が3回以下の単語（まだあまり習得できていない単語）を次点
+            # 未回答の単語もここに含まれる可能性がある
+            low_correct_count = df_filtered[
+                (df_filtered["正解回数"] <= 3) 
+            ].copy()
+            if not low_correct_count.empty:
+                # 苦手な単語と重複しないように、かつ重みを少し低く設定
+                low_correct_count = low_correct_count[~low_correct_count['単語'].isin(quiz_candidates_df['単語'])]
+                if not low_correct_count.empty:
+                    low_correct_count['temp_weight'] = low_correct_count['正解回数'].apply(lambda x: 4 - x) # 正解回数が少ないほど重みが高くなる
+                    quiz_candidates_df = pd.concat([quiz_candidates_df, low_correct_count], ignore_index=True)
             
+            if quiz_candidates_df.empty:
+                st.info("現在のフィルター条件で、苦手な単語（不正解が多いか正解3回以下）はありません。モードを変更してください。")
+                st.session_state.current_quiz = None
+                return
+
+        elif st.session_state.quiz_mode == "復習":
+            # フィルターされた全ての単語を候補とする
+            if not df_filtered.empty:
+                quiz_candidates_df = df_filtered.copy()
+                quiz_candidates_df['temp_weight'] = 1 # 全て等しい重みでランダム出題
+            else:
+                st.info("現在のフィルター条件に一致する単語がありません。フィルターを変更してください。")
+                st.session_state.current_quiz = None
+                return
+        
+        # 最終的な出題候補の絞り込みと重み付け
         quiz_candidates_df = quiz_candidates_df.sort_values(by='temp_weight', ascending=False).drop_duplicates(subset='単語', keep='first')
 
         if quiz_candidates_df.empty:
-            st.info("現在のフィルター条件に一致する単語がないか、すべての単語を回答しました！フィルターを変更するか、学習データをリセットしてください。")
+            st.info("選択されたモードとフィルター条件では、出題できる単語が見つかりませんでした。設定を変更してください。")
             st.session_state.current_quiz = None
             return
 
         weights = quiz_candidates_df['temp_weight'].tolist()
         
-        if sum(weights) == 0:
+        if sum(weights) == 0: # 重みがすべて0の場合（稀なケースだが念のため）
             selected_quiz_row = quiz_candidates_df.sample(n=1).iloc[0]
         else:
             selected_quiz_row = quiz_candidates_df.sample(n=1, weights=weights).iloc[0]
@@ -299,7 +338,7 @@ class QuizApp:
         
         st.session_state.quiz_choice_index += 1 
 
-        st.session_state.debug_message_quiz_start = f"DEBUG: 新しいクイズがロードされました: '{st.session_state.current_quiz['単語']}'"
+        st.session_state.debug_message_quiz_start = f"DEBUG: 新しいクイズがロードされました: '{st.session_state.current_quiz['単語']}' (モード: {st.session_state.quiz_mode})"
         st.session_state.debug_message_answer_update = "" 
         st.session_state.debug_message_error = ""
         st.session_state.debug_message_answer_end = ""
@@ -443,7 +482,7 @@ class QuizApp:
 
         progress_percent = (answered_filtered_words / total_filtered_words) if total_filtered_words > 0 else 0
         
-        st.sidebar.markdown(f"**<span style='font-size: 1.1em;'>回答済み: {answered_filtered_words} / {total_filtered_words} 単語</span>**", unsafe_allow_html=True)
+        st.sidebar.markdown(f"**<span style='font-size: 1.1em;'>正解済み: {answered_filtered_words} / {total_filtered_words} 単語</span>**", unsafe_allow_html=True)
         st.sidebar.progress(progress_percent)
 
     def show_completion(self):
@@ -555,7 +594,6 @@ def main():
     data_source_options_radio = ["アップロード", "初期データ"]
     
     def on_data_source_change():
-        # Streamlitはコールバック完了後に自動で再実行されるため、st.rerun()は不要です。
         if st.session_state.main_data_source_radio != st.session_state.data_source_selection:
             st.session_state.data_source_selection = st.session_state.main_data_source_radio
             
@@ -568,8 +606,6 @@ def main():
                 if st.session_state.uploaded_df_temp is not None:
                     quiz_app._load_uploaded_data()
             
-            # st.rerun() は削除しました。
-
     selected_source_radio = st.sidebar.radio(
         "📚 **使用するデータソースを選択**",
         options=data_source_options_radio,
@@ -605,30 +641,78 @@ def main():
     st.sidebar.header("クイズの絞り込み") 
     
     df_filtered = pd.DataFrame()
-    remaining_df = pd.DataFrame()
+    remaining_df = pd.DataFrame() # これはあくまで「一度も回答していない単語」
     
     if st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
         df_filtered, remaining_df = quiz_app.filter_data()
     else:
         pass 
 
-    if st.session_state.current_quiz is None: 
-        # remaining_df は「まだ一度も回答していない単語」のリスト
-        # クイズ開始ボタンは、回答すべき単語が残っている場合にのみ表示
-        if not df_filtered.empty and len(remaining_df) > 0:
-            if st.sidebar.button("▶️ **クイズ開始**", key="sidebar_start_quiz_button"):
-                quiz_app.load_quiz(df_filtered, remaining_df)
+    st.sidebar.markdown("---")
+    st.sidebar.header("出題モード選択")
+    # 新しい出題モードのラジオボタン
+    quiz_mode_options = ["未回答", "苦手", "復習"]
+    
+    def on_quiz_mode_change():
+        # モードが変更されたら現在のクイズをリセットし、新しいモードで次の問題をロードできるようにする
+        if st.session_state.selected_quiz_mode != st.session_state.quiz_mode:
+            st.session_state.quiz_mode = st.session_state.selected_quiz_mode
+            st.session_state.current_quiz = None # 現在のクイズをリセット
+            st.session_state.quiz_answered = False # 回答済みフラグもリセット
+            # st.rerun() はStreamlitの自動再実行に任せる
+
+    st.session_state.selected_quiz_mode = st.sidebar.radio(
+        "💡 **どの問題を解きますか？**",
+        options=quiz_mode_options,
+        key="selected_quiz_mode",
+        index=quiz_mode_options.index(st.session_state.quiz_mode) if st.session_state.quiz_mode in quiz_mode_options else 0,
+        on_change=on_quiz_mode_change
+    )
+
+    # クイズ開始ボタンのロジックをモードに合わせて調整
+    if st.session_state.current_quiz is None:
+        can_start_quiz = False
+        message = ""
+
+        if st.session_state.quiz_df is None or st.session_state.quiz_df.empty:
+            message = "クイズを開始するには、まず有効な学習データをロードしてください。"
+        elif st.session_state.selected_quiz_mode == "未回答":
+            if not remaining_df.empty:
+                can_start_quiz = True
+                message = "まだ回答していない単語があります。クイズを開始しましょう！"
+            else:
+                message = "現在のフィルター条件で、まだ回答していない単語はありません。モードを変更するか、フィルターを解除してください。"
+        elif st.session_state.selected_quiz_mode == "苦手":
+            # 苦手な単語（不正解回数 > 正解回数 または 正解回数 <= 3）が存在するかチェック
+            # このチェックはload_quiz内でも行われるが、ボタン表示のためにここでも簡易的にチェック
+            struggled_exists = len(df_filtered[
+                (df_filtered["不正解回数"] > df_filtered["正解回数"]) |
+                (df_filtered["正解回数"] <= 3)
+            ]) > 0
+            
+            if struggled_exists:
+                can_start_quiz = True
+                message = "苦手な単語が残っています。克服しましょう！"
+            else:
+                message = "現在のフィルター条件で、苦手な単語は見つかりませんでした。モードを変更してください。"
+        elif st.session_state.selected_quiz_mode == "復習":
+            if not df_filtered.empty:
+                can_start_quiz = True
+                message = "全ての単語をランダムに復習します。知識を定着させましょう！"
+            else:
+                message = "現在のフィルター条件に一致する単語がありません。フィルターを変更してください。"
+        
+        if can_start_quiz:
+            st.sidebar.info(message)
+            if st.sidebar.button("▶️ **クイズ開始**", key="sidebar_start_quiz_button_main"):
+                quiz_app.load_quiz(df_filtered, remaining_df) # load_quiz内でモードに応じた候補が選ばれる
                 st.rerun()
-        # フィルターされた単語全体は存在するが、未回答の単語がない場合
-        elif len(df_filtered) > 0 and len(remaining_df) == 0:
-             st.sidebar.info("現在のフィルター条件のすべての問題に回答しました。")
-        # フィルター条件に一致する単語が全くない場合
-        elif len(df_filtered) == 0: 
-             st.sidebar.info("現在のフィルター条件に一致する単語がありません。フィルターを変更してください。")
+        else:
+            st.sidebar.info(message)
+            # クイズ開始ボタンは表示しない
     
     st.sidebar.markdown("---") 
 
-    # 学習進捗は「〇×結果」が「〇」の単語を数えるように変更済み
     quiz_app.show_progress(df_filtered)
 
     st.markdown("---") 
@@ -639,12 +723,9 @@ def main():
         else:
             st.info("クイズを開始するには、まず有効な学習データをロードしてください。") 
     elif st.session_state.current_quiz is None:
-        if len(df_filtered) > 0 and len(remaining_df) > 0:
-            st.info("データがロードされました！サイドバーの「クイズ開始」ボタンをクリックしてください。")
-        elif len(df_filtered) > 0 and len(remaining_df) == 0:
-            quiz_app.show_completion()
-        else: 
-            st.info("現在のフィルター条件に一致する単語がないか、データがありません。フィルターを変更するか、新しいデータをアップロードしてください。")
+        # ここでは、詳細なメッセージはサイドバーのロジックで表示されるため、
+        # シンプルな開始指示に留めるか、何も表示しない
+        st.info("出題モードを選択し、サイドバーの「クイズ開始」ボタンをクリックしてください。")
     else:
         quiz_app.display_quiz(df_filtered, remaining_df)
     
