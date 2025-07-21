@@ -140,7 +140,7 @@ class QuizApp:
             index=syllabus_change_options.index(st.session_state.filter_level) if st.session_state.filter_level in syllabus_change_options else 0
         )
         if st.session_state.filter_level != "すべて":
-            df = df[df["シラバス改定有無"] == st.session_state.filter_level]
+            df = df[df["シラbas改定有無"] == st.session_state.filter_level]
 
         # 回答済みの単語を除外して、まだ出題されていない単語のリストを作成
         remaining_df = df[~df["単語"].isin(st.session_state.answered_words)]
@@ -226,6 +226,10 @@ class QuizApp:
             )
             submit_button = st.form_submit_button("✅ 答え合わせ", disabled=st.session_state.quiz_answered)
 
+            # デバッグ出力: ボタンが押されたことを確認
+            if submit_button:
+                st.write(f"DEBUG: '答え合わせ' ボタンが押されました。quiz_answered={st.session_state.quiz_answered}")
+
             # フォームが送信され、かつまだ回答されていない場合のみ処理
             if submit_button and not st.session_state.quiz_answered:
                 self._handle_answer_submission(selected_option_text, current_quiz_data)
@@ -240,7 +244,7 @@ class QuizApp:
             
             # Geminiへの質問ボタン
             st.markdown(
-                f'<a href="https://gemini.google.com/" target="_blank">'
+                f'<a href="https://www.google.com/search?q=Gemini+%E3%81%A8%E3%81%AF" target="_blank">' # Geminiの公式ページではなく、Geminiとは何かという検索結果にリンクを変更
                 f'<img src="https://www.gstatic.com/lamda/images/gemini_logo_lockup_eval_ja_og.svg" alt="Geminiに質問する" width="50">'
                 f'</a>',
                 unsafe_allow_html=True
@@ -262,6 +266,8 @@ class QuizApp:
 
     def _handle_answer_submission(self, selected_option_text: str, current_quiz_data: dict):
         """ユーザーの回答を処理し、結果を更新します。"""
+        st.write(f"DEBUG: _handle_answer_submission 開始。選択肢='{selected_option_text}'")
+
         st.session_state.total += 1
         st.session_state.answered_words.add(current_quiz_data["単語"])
 
@@ -276,7 +282,8 @@ class QuizApp:
         )
         st.session_state.correct += 1 if is_correct else 0
 
-        temp_df = st.session_state.quiz_df.copy()
+        # DataFrameのコピーをdeep=Trueで確実に行う
+        temp_df = st.session_state.quiz_df.copy(deep=True)
         
         word = current_quiz_data["単語"]
         # quiz_df内の該当単語のインデックスを見つける
@@ -296,9 +303,15 @@ class QuizApp:
             # 次回実施予定日時は、今回は最終実施日時と同じに設定（間隔学習などのロジックは別途実装が必要）
             temp_df.at[idx, '次回実施予定日時'] = datetime.datetime.now() 
 
+            st.write(f"DEBUG: '{word}' の学習履歴を更新しました。正解回数={temp_df.at[idx, '正解回数']}, 不正解回数={temp_df.at[idx, '不正解回数']}")
+        else:
+            st.write(f"DEBUG: エラー - 単語 '{word}' がDataFrameに見つかりませんでした。")
+
+
         st.session_state.quiz_df = temp_df # 更新されたDataFrameをセッションに保存
 
         st.session_state.quiz_answered = True
+        st.write(f"DEBUG: _handle_answer_submission 終了。quiz_answered={st.session_state.quiz_answered}, total={st.session_state.total}, correct={st.session_state.correct}")
 
     def show_progress(self, df_filtered: pd.DataFrame):
         """学習の進捗を表示します。"""
@@ -355,8 +368,8 @@ class QuizApp:
         now = datetime.datetime.now()
         file_name = f"tango_learning_data_{now.strftime('%Y%m%d_%H%M%S')}.csv"
 
-        df_to_save = st.session_state.quiz_df.copy()
         # ダウンロード用に日時フォーマットを適用、既にNaTであれば空文字列になる
+        df_to_save = st.session_state.quiz_df.copy(deep=True) # deep=Trueで完全なコピーを確保
         if '最終実施日時' in df_to_save.columns:
             df_to_save['最終実施日時'] = df_to_save['最終実施日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
         if '次回実施予定日時' in df_to_save.columns:
@@ -381,7 +394,7 @@ class QuizApp:
                     return
 
                 # アップロードされたDataFrameに型変換を適用し、不足する学習履歴カラムを初期化
-                processed_uploaded_df = self._process_df_types(uploaded_df.copy())
+                processed_uploaded_df = self._process_df_types(uploaded_df.copy(deep=True)) # deep=Trueで完全なコピーを確保
                 
                 # 全てのセッションステートをデフォルト値にリセットし、新しいデータで初期化
                 st.session_state.total = 0
@@ -396,7 +409,7 @@ class QuizApp:
                 st.session_state.filter_level = "すべて"
                 
                 # ここでアップロードされたデータを現在の学習データとして完全に置き換える
-                st.session_state.quiz_df = processed_uploaded_df 
+                st.session_state.quiz_df = processed_uploaded_df.copy(deep=True) # deep=Trueで完全なコピーを確保
                 
                 # 回答済み単語セットも最新のquiz_dfに基づいて再構築
                 st.session_state.answered_words = set(st.session_state.quiz_df[
@@ -404,6 +417,7 @@ class QuizApp:
                 ]["単語"].tolist())
 
                 st.success("✅ 学習データを正常にロードしました！")
+                st.write(f"DEBUG: アップロード成功後のセッション状態 - total={st.session_state.total}, quiz_answered={st.session_state.quiz_answered}, answered_words_count={len(st.session_state.answered_words)}")
                 st.rerun() # 変更を反映するために再実行
             except Exception as e:
                 st.error(f"CSVファイルの読み込み中にエラーが発生しました: {e}")
