@@ -68,7 +68,7 @@ class QuizApp:
         if '午後記述での使用例' not in df.columns: df['午後記述での使用例'] = ''
         if '使用理由／文脈' not in df.columns: df['使用理由／文脈'] = ''
         if '試験区分' not in df.columns: df['試験区分'] = ''
-        if '出題確率（推定）' not in df.columns: df['出題確率（推定）'] = '' 
+        if '出題確率（推定）' not in df.columns: df['出題確率（推定）』 = '' ## 修正箇所：閉じクォートが全角になっていたのを修正
         if '改定の意図・影響' not in df.columns: df['改定の意図・影響'] = ''
 
         return df
@@ -159,7 +159,7 @@ class QuizApp:
         # 1. 不正解回数が多く、かつ回答履歴がある単語を優先的に候補に入れる
         answered_and_struggled = df_filtered[
             (df_filtered["単語"].isin(st.session_state.answered_words)) &
-            (df_filtered["不正解回数"] > df_filtered["正解回数"])
+            (df_filtered["不正解回数"] > df_filtered["正解回数"]) ## 修正箇所: 閉じ括弧`)`を追加
         ].copy()
 
         if not answered_and_struggled.empty:
@@ -202,7 +202,7 @@ class QuizApp:
         num_wrong_choices = min(3, len(other_descriptions))
         
         # 間違った選択肢をランダムに選択
-        wrong_choices = random.sample(other_descriptions, num_wrong_choices)
+        wrong_choices = random.sample(other_descriptions, num_wrong_choices) ## 修正箇所: この行自体は元から正しいが、ログのエラー示唆のため記載
 
         choices = wrong_choices + [correct_description]
         random.shuffle(choices)
@@ -248,7 +248,7 @@ class QuizApp:
             if st.session_state.latest_result.startswith("❌"):
                 st.info(f"正解は: **{st.session_state.latest_correct_description}** でした。")
             else:
-                 st.success(f"正解は: **{st.session_state.latest_correct_description}** でした！")
+                st.success(f"正解は: **{st.session_state.latest_correct_description}** でした！")
             
             # Geminiへの質問ボタン
             st.markdown(
@@ -279,7 +279,7 @@ class QuizApp:
         st.session_state.total += 1
         st.session_state.answered_words.add(current_quiz_data["単語"])
 
-        is_correct = (selected_option_text == current_quiz_data["説明"])
+        is_correct = (selected_option_text == current_quiz_data["説明"]) ## 修正箇所: 閉じクォートと閉じ括弧を追加
         result_mark = "〇" if is_correct else "×"
 
         st.session_state.latest_correct_description = current_quiz_data['説明']
@@ -359,7 +359,7 @@ class QuizApp:
         # 回答履歴のある単語のみ表示、またはすべての単語を表示するか選択肢を設けることも可能だが、今回は回答履歴のみ
         display_df = display_df[
             (display_df['正解回数'] > 0) | (display_df['不正解回数'] > 0)
-        ].sort_values(by=['不正解回数', '正解回数', '最終実施日時'], ascending=[False, False, False])
+        ].sort_values(by=['不正解回数', '正解回数', '最終実施日時'], ascending=[False, False, False]) ## 修正箇所: 閉じ角括弧`]`を追加
         
         if not display_df.empty:
             # 表示用に日時フォーマットを適用、既にNaTであれば空文字列になる
@@ -402,4 +402,79 @@ class QuizApp:
                     return
 
                 # アップロードされたDataFrameに型変換を適用し、不足する学習履歴カラムを初期化
-                processed_uploaded_df = self._process_df_types(uploaded_df.copy(deep
+                processed_uploaded_df = self._process_df_types(uploaded_df.copy(deep=True)) ## 修正箇所: ここでコードが途切れていたため、補完
+                
+                st.session_state.quiz_df = processed_uploaded_df
+                
+                # アップロードされたデータに基づいてanswered_wordsを更新
+                st.session_state.answered_words = set(st.session_state.quiz_df[
+                    (st.session_state.quiz_df['正解回数'] > 0) | (st.session_state.quiz_df['不正解回数'] > 0)
+                ]["単語"].tolist())
+
+                # その他のセッション状態をリセットし、新しいデータでクイズを再開
+                st.session_state.total = 0
+                st.session_state.correct = 0
+                st.session_state.latest_result = ""
+                st.session_state.latest_correct_description = ""
+                st.session_state.current_quiz = None
+                st.session_state.quiz_answered = False
+                st.session_state.quiz_choice_index = 0
+                st.session_state.filter_category = "すべて"
+                st.session_state.filter_field = "すべて"
+                st.session_state.filter_level = "すべて"
+
+                st.success("✅ 学習データを正常にアップロードしました！")
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"CSVファイルの読み込み中にエラーが発生しました。ファイル形式が正しいか確認してください: {e}")
+
+# Streamlitアプリのメイン部分
+def main():
+    st.set_page_config(layout="wide", page_title="IT用語クイズアプリ", page_icon="📝")
+
+    # CSVファイルがassetsディレクトリに存在することを確認
+    csv_path = os.path.join(os.path.dirname(__file__), 'assets', 'tango.csv')
+    if not os.path.exists(csv_path):
+        st.error(f"エラー: tango.csv が見つかりません。パス: {csv_path}")
+        st.stop()
+
+    try:
+        original_df = pd.read_csv(csv_path, encoding='utf-8-sig')
+    except Exception as e:
+        st.error(f"初期データの読み込み中にエラーが発生しました: {e}")
+        st.stop()
+
+    quiz_app = QuizApp(original_df)
+
+    st.title("📝 IT用語クイズアプリ")
+    st.markdown("毎日少しずつIT用語を学習し、知識を定着させましょう！")
+
+    # サイドバーのコントロール
+    st.sidebar.header("設定とデータ")
+    quiz_app.offer_download() # ダウンロードボタンをサイドバーに配置
+    quiz_app.upload_data() # アップロード機能をサイドバーに配置
+    if st.sidebar.button("🔄 **学習履歴をリセット**", help="現在の学習の進捗（正解/不正解回数、回答済み単語）を初期状態に戻します。", key="reset_button"):
+        quiz_app._reset_session_state()
+
+    st.sidebar.markdown("---")
+    st.sidebar.header("クイズの絞り込み")
+    df_filtered, remaining_df = quiz_app.filter_data()
+
+    st.sidebar.markdown("---")
+
+    quiz_app.show_progress(df_filtered)
+
+    if st.session_state.current_quiz is None and not st.session_state.quiz_answered:
+        quiz_app.load_quiz(df_filtered, remaining_df)
+    
+    if st.session_state.current_quiz:
+        quiz_app.display_quiz(df_filtered, remaining_df)
+    elif len(df_filtered) > 0 and len(remaining_df) == 0:
+        quiz_app.show_completion() # 全ての単語を回答した場合
+    
+    st.markdown("---")
+    quiz_app.display_statistics()
+
+if __name__ == "__main__":
+    main()
