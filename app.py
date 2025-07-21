@@ -12,6 +12,41 @@ st.set_page_config(
     initial_sidebar_state="expanded" # 'auto', 'expanded', 'collapsed'
 )
 
+# --- ここからセッション状態の初期化ロジックを記述 ---
+# quiz_app = QuizApp() の前に実行されるようにする
+
+# セッション状態のデフォルト値
+defaults = {
+    "quiz_df": None,
+    "current_quiz": None,
+    "total": 0,
+    "correct": 0,
+    "latest_result": "",
+    "latest_correct_description": "",
+    "quiz_answered": False,
+    "quiz_choice_index": 0,
+    "filter_category": "すべて",
+    "filter_field": "すべて",
+    "filter_level": "すべて",
+    "data_source_selection": "初期データ",
+    "uploaded_df_temp": None,
+    "uploaded_file_name": None,
+    "uploaded_file_size": None,
+    "answered_words": set(),
+    "debug_mode": False,
+    "quiz_mode": "復習", # quiz_mode もここで初期化すること
+}
+
+for key, val in defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = val
+    # answered_wordsがリストとしてロードされた場合の変換
+    if key == "answered_words" and not isinstance(st.session_state[key], set):
+        st.session_state[key] = set(st.session_state[key])
+
+# --- ここまでセッション状態の初期化ロジック ---
+
+
 # カスタムCSSの適用
 st.markdown("""
 <style>
@@ -124,36 +159,9 @@ st.markdown("""
 
 class QuizApp:
     def __init__(self):
-        # セッション状態のデフォルト値
-        self.defaults = {
-            "quiz_df": None,
-            "current_quiz": None,
-            "total": 0,
-            "correct": 0,
-            "latest_result": "",
-            "latest_correct_description": "",
-            "quiz_answered": False,
-            "quiz_choice_index": 0, # クイズの選択肢の表示を制御するためのインデックス
-            "filter_category": "すべて",
-            "filter_field": "すべて",
-            "filter_level": "すべて",
-            "data_source_selection": "初期データ",
-            "uploaded_df_temp": None,
-            "uploaded_file_name": None,
-            "uploaded_file_size": None,
-            "answered_words": set(), # 既に回答した単語を追跡するためのセット
-            "debug_mode": False, # デバッグモードのフラグ
-        }
-        self._initialize_session()
-
-    def _initialize_session(self):
-        """セッション状態をデフォルト値で初期化します。既に存在する場合は更新しません。"""
-        for key, val in self.defaults.items():
-            if key not in st.session_state:
-                st.session_state[key] = val
-            # answered_wordsがリストとしてロードされた場合の変換
-            if key == "answered_words" and not isinstance(st.session_state[key], set):
-                st.session_state[key] = set(st.session_state[key])
+        # セッション状態の初期化は、アプリの先頭で行うため、ここでは何もしないか、
+        # もしくは初期化が確実に行われた後のロジックのみを記述
+        pass # または、必要に応じて追加のセットアップロジック
 
     def _reset_quiz_state_only(self):
         """クイズの進行に関するセッションステートのみをリセットします。"""
@@ -404,7 +412,12 @@ class QuizApp:
 
     def display_quiz(self, df_filtered: pd.DataFrame, remaining_df: pd.DataFrame):
         """クイズのUIを表示します。"""
-        col1, col2, col3 = st.columns(3)
+        # カラム数を3から4に変更
+        col1, col2, col3, col4 = st.columns(4) 
+
+        # フィルタリングされた単語の総数を計算
+        filtered_count = len(df_filtered)
+
         with col1:
             st.markdown(f"<div class='metric-container'><div class='metric-value'>{st.session_state.correct}</div><div class='metric-label'>正解数</div></div>", unsafe_allow_html=True)
         with col2:
@@ -412,7 +425,10 @@ class QuizApp:
         with col3:
             # 未回答の単語数を表示
             st.markdown(f"<div class='metric-container'><div class='metric-value'>{len(remaining_df)}</div><div class='metric-label'>未回答単語</div></div>", unsafe_allow_html=True)
-        
+        with col4:
+            # 新しく追加する「対象単語数」を表示
+            st.markdown(f"<div class='metric-container'><div class='metric-value'>{filtered_count}</div><div class='metric-label'>対象単語数</div></div>", unsafe_allow_html=True)
+            
         # デバッグメッセージの表示 (デバッグモードが有効な場合のみ)
         if st.session_state.debug_mode:
             st.expander("デバッグ情報", expanded=False).write(st.session_state.debug_message_quiz_start)
@@ -497,6 +513,7 @@ class QuizApp:
 
 # アプリケーションの実行
 def main():
+    # QuizAppのインスタンス化 (セッション状態の初期化は既に行われているため、ここではパスまたは他のロジック)
     quiz_app = QuizApp()
 
     # サイドバーのデータソース選択
@@ -548,10 +565,14 @@ def main():
 
 
     # アプリケーションの初期ロード時に初期データをロード
-    if st.session_state.quiz_df is None and st.session_state.data_source_selection == "初期データ":
-        quiz_app._load_initial_data()
-    elif st.session_state.quiz_df is None and st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is not None:
-         quiz_app._load_uploaded_data()
+    # この部分は、上記の全体的な初期化と重複する可能性があるため、ロジックを見直す
+    # たとえば、quiz_dfがNoneの場合は、selected_source_radioに基づいてロードする
+    if st.session_state.quiz_df is None:
+        if st.session_state.data_source_selection == "初期データ":
+            quiz_app._load_initial_data()
+        elif st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is not None:
+            quiz_app._load_uploaded_data()
+
 
     # タブの作成
     tab1, tab2 = st.tabs(["クイズ", "データビューア"])
@@ -562,6 +583,7 @@ def main():
         # クイズモードの選択
         st.sidebar.header("🎯 クイズモード")
         quiz_modes = ["復習", "未回答", "苦手"]
+        # quiz_modeは既に初期化されているはずなので、indexの参照でエラーは発生しない
         st.session_state.quiz_mode = st.sidebar.radio(
             "クイズモードを選択", 
             quiz_modes, 
