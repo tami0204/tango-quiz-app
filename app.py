@@ -23,7 +23,7 @@ class QuizApp:
             "filter_level": "すべて", # 'シラバス改定有無'フィルター用
         }
         self._initialize_session()
-
+        
         self.initial_df = original_df.copy() # 元のDFを保持
 
         # アプリ起動時、またはアップロードがない場合に初期データを設定
@@ -40,7 +40,7 @@ class QuizApp:
     def _initialize_quiz_df_from_original(self):
         """元のDataFrameからquiz_dfを初期化し、必要な列を追加します。"""
         st.session_state.quiz_df = self.initial_df.copy()
-
+        
         # 既存の〇×結果, 正解回数, 不正解回数の初期化
         if '〇×結果' not in st.session_state.quiz_df.columns:
             st.session_state.quiz_df['〇×結果'] = ''
@@ -50,14 +50,14 @@ class QuizApp:
             st.session_state.quiz_df['正解回数'] = 0
         if '不正解回数' not in st.session_state.quiz_df.columns:
             st.session_state.quiz_df['不正解回数'] = 0
-
+        
         # 新しい日時カラムの初期化
         if '最終実施日時' not in st.session_state.quiz_df.columns:
             st.session_state.quiz_df['最終実施日時'] = pd.NaT # Not a Time (PandasのdatetimeのNaN)
         else:
             # CSVからの読み込み時に文字列として入ってくる可能性があるので変換
             st.session_state.quiz_df['最終実施日時'] = pd.to_datetime(st.session_state.quiz_df['最終実施日時'], errors='coerce')
-
+        
         if '次回実施予定日時' not in st.session_state.quiz_df.columns:
             st.session_state.quiz_df['次回実施予定日時'] = pd.NaT
         else:
@@ -72,7 +72,7 @@ class QuizApp:
     def _reset_session_state(self):
         """セッション状態をデフォルト値にリセットします。"""
         self._initialize_quiz_df_from_original() # quiz_dfを初期状態に戻す
-
+        
         for key, val in self.defaults.items():
             if key not in ["quiz_df", "filter_category", "filter_field", "filter_level"]:
                 st.session_state[key] = val if not isinstance(val, set) else set()
@@ -107,7 +107,7 @@ class QuizApp:
         # 'シラバス改定有無' 列を文字列型に変換し、空白を除去、空文字列とNaNを除外してユニークな値を取得
         valid_syllabus_changes = df["シラバス改定有無"].astype(str).str.strip().replace('', pd.NA).dropna().unique().tolist()
         syllabus_change_options = ["すべて"] + sorted(valid_syllabus_changes)
-
+        
         st.session_state.filter_level = st.sidebar.selectbox( # フィルター名を「習熟度」から「シラバス改定有無」に変更
             "🔄 シラバス改定有無で絞り込み", 
             syllabus_change_options, 
@@ -132,7 +132,7 @@ class QuizApp:
         # フィルターされたdf_filteredの中から、回答済みで、かつ不正解回数が正解回数より多い単語を抽出
         answered_and_struggled = df_filtered[
             (df_filtered["単語"].isin(st.session_state.answered_words)) &
-            (df_filtered["不正解回数"] > df_filtered["正解回数"]) # ここが修正箇所
+            (df_filtered["不正解回数"] > df_filtered["正解回数"])
         ].copy() # SettingWithCopyWarningを避けるため.copy()
 
         if not answered_and_struggled.empty:
@@ -145,7 +145,7 @@ class QuizApp:
             remaining_df_copy = remaining_df.copy()
             remaining_df_copy['temp_weight'] = 1 # まだ回答していない単語の重み
             quiz_candidates_df = pd.concat([quiz_candidates_df, remaining_df_copy], ignore_index=True)
-
+            
         # 重複する単語がある場合、不正解回数が多い方を優先するためにソート
         quiz_candidates_df = quiz_candidates_df.sort_values(by='temp_weight', ascending=False).drop_duplicates(subset='単語', keep='first')
 
@@ -159,7 +159,7 @@ class QuizApp:
 
         # 候補の中から重み付けサンプリング
         weights = quiz_candidates_df['temp_weight'].tolist()
-
+        
         # 重みの合計が0でないことを確認
         if sum(weights) == 0:
             # 全ての重みが0の場合は、単純にランダムサンプリング
@@ -171,20 +171,20 @@ class QuizApp:
 
         # 選択肢を生成
         correct_description = st.session_state.current_quiz["説明"]
-
+        
         # 正しい説明を除く、他の説明文をランダムに選ぶ
         other_descriptions = st.session_state.quiz_df[st.session_state.quiz_df["説明"] != correct_description]["説明"].unique().tolist()
-
+        
         # 選択肢の数を調整（最大4つ、ただし利用可能な説明文の数を超えない）
         # 間違った選択肢を3つ選ぶ場合
         num_wrong_choices = min(3, len(other_descriptions))
         wrong_choices = random.sample(other_descriptions, num_wrong_choices)
 
         choices = wrong_choices + [correct_description]
-
+        
         random.shuffle(choices) # 選択肢をシャッフル
         st.session_state.current_quiz["choices"] = choices
-
+        
         # 正解のインデックスを保存 (ラジオボタンの初期選択用。回答後には使わない)
         st.session_state.quiz_choice_index = 0 # 初期選択は常に最初でOK
 
@@ -199,7 +199,7 @@ class QuizApp:
         st.markdown(f"🎯 **使用理由／文脈：** {current_quiz_data.get('使用理由／文脈', 'N/A')}")
         st.markdown(f"🕘 **試験区分：** {current_quiz_data.get('試験区分', 'N/A')}")
         st.markdown(f"📈 **出題確率（推定）：** {current_quiz_data.get('出題確率（推定）', 'N/A')}　📝 **改定の意図・影響：** {current_quiz_data.get('改定の意図・影響', 'N/A')}")
-
+        
         with st.form("quiz_form"):
             selected_option_text = st.radio(
                 "説明を選択してください:",
@@ -218,7 +218,7 @@ class QuizApp:
             st.markdown(f"### {st.session_state.latest_result}")
             if st.session_state.latest_result.startswith("❌"):
                 st.info(f"正解は: **{st.session_state.latest_correct_description}** でした。")
-
+            
             # Geminiへの質問ボタン (既存)
             st.markdown(
                 f'<div style="text-align: left; margin-top: 10px;">'
@@ -228,7 +228,7 @@ class QuizApp:
                 f'</div>',
                 unsafe_allow_html=True
             )
-
+            
             st.markdown("---")
             col1, col2 = st.columns(2)
             with col1:
@@ -258,18 +258,18 @@ class QuizApp:
         st.session_state.correct += 1 if is_correct else 0
 
         temp_df = st.session_state.quiz_df.copy()
-
+        
         word = current_quiz_data["単語"]
         if word in temp_df["単語"].values:
             idx = temp_df[temp_df["単語"] == word].index[0]
-
+            
             temp_df.at[idx, '〇×結果'] = result_mark
-
+            
             if is_correct:
                 temp_df.at[idx, '正解回数'] += 1
             else:
                 temp_df.at[idx, '不正解回数'] += 1
-
+            
             # 最終実施日時を更新
             temp_df.at[idx, '最終実施日時'] = datetime.datetime.now()
             # 次回実施予定日時 (今回は最終実施日時と同じにしておく。将来的に間隔反復ロジックで更新)
@@ -282,10 +282,10 @@ class QuizApp:
     def show_progress(self, df_filtered: pd.DataFrame):
         """学習の進捗を表示します。"""
         st.subheader("学習の進捗")
-
+        
         # フィルター後の単語数
         total_filtered_words = len(df_filtered)
-
+        
         # フィルター後の回答済み単語数
         answered_filtered_words = len(df_filtered[df_filtered["単語"].isin(st.session_state.answered_words)])
 
@@ -315,10 +315,10 @@ class QuizApp:
     def display_statistics(self):
         """単語ごとの正解・不正解回数と日時情報を表示します。"""
         st.subheader("単語ごとの学習統計")
-
+        
         # '単語', '正解回数', '不正解回数', '〇×結果', '最終実施日時', '次回実施予定日時' のみ表示
         display_df = st.session_state.quiz_df[['単語', '正解回数', '不正解回数', '〇×結果', '最終実施日時', '次回実施予定日時']].copy()
-
+        
         # 回答履歴がある単語のみに絞り込む
         display_df = display_df[
             (display_df['正解回数'] > 0) | (display_df['不正解回数'] > 0)
@@ -327,7 +327,7 @@ class QuizApp:
         if not display_df.empty:
             # 日時カラムの表示形式を整形
             display_df['最終実施日時'] = display_df['最終実施日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
-            display_df['次回実施予定日時'] = display_df['次回実施日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
+            display_df['次回実施予定日時'] = display_df['次回実施予定日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
             st.dataframe(display_df, use_container_width=True, hide_index=True)
         else:
             st.info("まだ回答履歴のある単語はありません。")
@@ -353,7 +353,7 @@ class QuizApp:
         if uploaded_file is not None:
             try:
                 uploaded_df = pd.read_csv(uploaded_file, encoding="utf-8-sig")
-
+                
                 # 必須カラムのチェック (日時カラムも必須として追加)
                 required_cols = ["単語", "説明", "カテゴリ", "分野", "正解回数", "不正解回数", "〇×結果", "最終実施日時", "次回実施予定日時"]
                 missing_cols = [col for col in required_cols if col not in uploaded_df.columns]
@@ -365,27 +365,27 @@ class QuizApp:
                 # 元の単語帳の全ての情報を保持しつつ、アップロードされた学習履歴（正解回数、不正解回数、〇×結果、日時）を優先する
                 merged_df = self.initial_df.set_index('単語').copy()
                 uploaded_df_for_merge = uploaded_df.set_index('単語')
-
+                
                 # 更新するカラムリスト
                 update_cols = ['〇×結果', '正解回数', '不正解回数', '最終実施日時', '次回実施予定日時']
-
+                
                 # アップロードされたDFの学習履歴関連カラムで更新
                 # 存在しない単語は無視される
                 merged_df.update(uploaded_df_for_merge[update_cols])
-
+                
                 final_df = merged_df.reset_index()
 
                 # データ型の再確認とNaN処理
                 final_df['〇×結果'] = final_df['〇×結果'].astype(str).replace('nan', '')
                 final_df['正解回数'] = final_df['正解回数'].fillna(0).astype(int)
                 final_df['不正解回数'] = final_df['不正解回数'].fillna(0).astype(int)
-
+                
                 # 日時カラムをdatetime型に変換
                 final_df['最終実施日時'] = pd.to_datetime(final_df['最終実施日時'], errors='coerce')
                 final_df['次回実施予定日時'] = pd.to_datetime(final_df['次回実施予定日時'], errors='coerce')
 
                 st.session_state.quiz_df = final_df
-
+                
                 # 回答済み単語セットも更新
                 st.session_state.answered_words = set(st.session_state.quiz_df[
                     (st.session_state.quiz_df['正解回数'] > 0) | (st.session_state.quiz_df['不正解回数'] > 0)
@@ -434,18 +434,22 @@ class QuizApp:
 
 # アプリケーションの開始点
 try:
-    # 実行環境が /mount/src/tango-quiz-app/ であることをログから確認しました。
-    # そのため、単語帳.xlsx が同階層にあると仮定します。
-    df = pd.read_excel("単語帳.xlsx", sheet_name="単語帳")
-    # CSVを使用する場合:
-    # df = pd.read_csv("単語帳.csv", encoding="utf-8-sig")
-except FileNotFoundError:
-    st.error("エラー: '単語帳.xlsx' (または指定されたデータファイル) が見つかりません。")
-    st.info("ファイルがアプリと同じディレクトリにあるか、ファイル名が正しいか確認してください。")
-    st.stop() # アプリの実行を停止
+    # お客様の元のデータファイル「tango.csv」を読み込むように修正しました。
+    # GitHubリポジトリの app.py と同じ階層に "tango.csv" があることを前提としています。
+    data_file_path = "tango.csv" # ここでファイル名を "tango.csv" に指定
+    
+    # ファイルが存在するかを事前にチェック
+    if not os.path.exists(data_file_path):
+        st.error(f"エラー: '{data_file_path}' が見つかりません。")
+        st.info("GitHubリポジトリの `app.py` と同じフォルダに、データファイル「tango.csv」があるか確認してください。")
+        st.stop() # アプリの実行を停止
+
+    # CSVファイルとして読み込む
+    df = pd.read_csv(data_file_path, encoding="utf-8-sig")
+
 except Exception as e:
     st.error(f"データファイルの読み込み中にエラーが発生しました: {e}")
-    st.info("データファイルの形式が正しいか、またはシート名が「単語帳」であるか確認してください。")
+    st.info("データファイル「tango.csv」の形式が正しいか、またはエンコーディングが 'utf-8-sig' であるか確認してください。")
     st.stop()
 
 # QuizApp インスタンスを作成し、元のDataFrameを渡す
