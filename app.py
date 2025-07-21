@@ -118,14 +118,14 @@ class QuizApp:
         self.initial_df = self._process_df_types(original_df.copy())
 
         # アプリ起動時の quiz_df 初期ロードロジックを、セッション状態に基づいて実行
+        # data_source_selection が "アップロード" で、かつファイルがアップロードされていない場合は、
+        # quiz_df は None のままにする（メインエリアでメッセージが表示される）
         if st.session_state.quiz_df is None:
             if st.session_state.data_source_selection == "初期データ":
                 self._load_initial_data()
             elif st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is not None:
                 self._load_uploaded_data()
-            else:
-                # アップロードが選択されているがまだファイルがない場合は、初期データでフォールバック（初回のみ）
-                self._load_initial_data() 
+            # それ以外の場合（アップロードが選択されているがファイルがない場合など）は quiz_df は None のまま
 
     def _initialize_session(self):
         """セッション状態をデフォルト値で初期化します。既に存在する場合は更新しません。"""
@@ -151,18 +151,18 @@ class QuizApp:
                 (st.session_state.quiz_df['正解回数'] > 0) | (st.session_state.quiz_df['不正解回数'] > 0)
             ]["単語"].tolist())
             self._reset_quiz_state_only() 
-        # ここからフォールバックロジックを削除
+        # ここからフォールバックロジックを完全に削除
 
     def _process_df_types(self, df: pd.DataFrame) -> pd.DataFrame:
         """DataFrameに対して、必要なカラムの型変換と初期化を適用します。"""
         if '〇×結果' not in df.columns: df['〇×結果'] = ''
         else: df['〇×結果'] = df['〇×結果'].astype(str).replace('nan', '')
 
-        for col in ['正解回数', '不正解回数']:
-            if col not in df.columns: df[col] = 0
-            else: df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
+        for col_name in ['正解回数', '不正解回数']:
+            if col_name not in df.columns: df[col_name] = 0
+            else: df[col_name] = pd.to_numeric(df[col_name], errors='coerce').fillna(0).astype(int)
 
-        for col_name in ['最終実施日時', '次回実施予定日時']: # 'col'ではなく'col_name'を使用
+        for col_name in ['最終実施日時', '次回実施予定日時']:
             if col_name not in df.columns: df[col_name] = pd.NaT
             else: df[col_name] = pd.to_datetime(df[col_name], errors='coerce') 
         
@@ -570,13 +570,11 @@ def main():
                 st.session_state.uploaded_file_name = None
                 st.session_state.uploaded_file_size = None
             else: # "アップロード"が選択された場合
-                # アップロードデータが存在する場合はそれをロード
+                # ここで `st.sidebar.info("CSVファイルをアップロードしてください。")` を完全に削除
                 if st.session_state.uploaded_df_temp is not None:
                     quiz_app._load_uploaded_data()
                     st.sidebar.success(f"✅ アップロードされたデータ ({st.session_state.uploaded_file_name}) を適用しました。")
-                # アップロードデータがない場合は、現在のquiz_dfを維持（初期データなど）
-                else:
-                    st.sidebar.info("CSVファイルをアップロードしてください。") # このメッセージは残す
+                # else: （ここにメッセージ表示ロジックがあったが削除）
             
             st.rerun() 
 
@@ -596,10 +594,8 @@ def main():
         disabled=(st.session_state.data_source_selection == "初期データ")
     )
     
-    # アップロードが試みられた場合にのみロジックを呼び出す
     if uploaded_file is not None:
         quiz_app.handle_upload_logic(uploaded_file)
-    # ファイルがアップロードされていないがアップロードモードの場合のメッセージは on_data_source_change でハンドリング
 
     st.sidebar.markdown("---") 
 
@@ -620,7 +616,7 @@ def main():
     if st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
         df_filtered, remaining_df = quiz_app.filter_data()
     else:
-        # この else ブロックは維持。データがない場合に「クイズを開始するには...」のメッセージを出すため
+        # ここではメッセージを出さず、メインコンテンツエリアのメッセージに任せる
         pass
 
     if st.session_state.current_quiz is None: 
@@ -632,7 +628,7 @@ def main():
              st.sidebar.info("現在のフィルター条件のすべての問題に回答しました。")
         elif len(df_filtered) == 0: 
              st.sidebar.info("現在のフィルター条件に一致する単語がありません。フィルターを変更してください。")
-
+    
     st.sidebar.markdown("---") 
 
     quiz_app.show_progress(df_filtered)
@@ -640,8 +636,11 @@ def main():
     st.markdown("---") 
     
     if st.session_state.quiz_df is None or st.session_state.quiz_df.empty:
-        # uploaded_df_temp が None の場合も、単にクイズ開始できない旨を伝える
-        st.info("クイズを開始するには、まず有効な学習データをロードしてください。")
+        # メインコンテンツエリアで、quiz_dfがNoneの場合に統一してメッセージを出す
+        if st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is None:
+            st.info("アップロードモードが選択されていますが、まだファイルがアップロードされていません。CSVファイルをアップロードしてください。")
+        else:
+            st.info("クイズを開始するには、まず有効な学習データをロードしてください。") # 通常の初期データロード失敗時など
     elif st.session_state.current_quiz is None:
         if len(df_filtered) > 0 and len(remaining_df) > 0:
             st.info("データがロードされました！サイドバーの「クイズ開始」ボタンをクリックしてください。")
