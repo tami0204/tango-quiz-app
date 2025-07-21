@@ -18,10 +18,10 @@ class QuizApp:
             "quiz_answered": False,
             "quiz_choice_index": 0,
             "quiz_df": None,
-            "uploaded_df_temp": None,
-            "uploaded_file_name": None,
-            "uploaded_file_size": None,
-            "data_source_selection": "初期データ",
+            "uploaded_df_temp": None, # アップロードされたデータを一時的に保持
+            "uploaded_file_name": None, # アップロードされたファイル名
+            "uploaded_file_size": None, # アップロードされたファイルサイズ
+            "data_source_selection": "初期データ", # 現在選択されているデータソース（初期データ or アップロード）
             "filter_category": "すべて",
             "filter_field": "すべて",
             "filter_level": "すべて",
@@ -30,25 +30,52 @@ class QuizApp:
             "debug_message_error": "",
             "debug_message_answer_end": "",
         }
+        
+        # セッション状態をデフォルト値で初期化（初回のみ実行されるように制御）
         self._initialize_session()
         
+        # original_df を初期化時に一度だけ _process_df_types で処理
         self.initial_df = self._process_df_types(original_df.copy())
 
+        # quiz_df の初期ロードロジック
         if st.session_state.quiz_df is None:
             if st.session_state.data_source_selection == "初期データ":
-                self._initialize_quiz_df_from_original()
-            elif st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is None:
-                # アップロードが選択されているが、まだファイルがアップロードされていない場合、初期データを表示
-                self._initialize_quiz_df_from_original() 
+                self._load_initial_data()
             elif st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is not None:
-                # アップロード済みデータがあればそれを設定
-                st.session_state.quiz_df = st.session_state.uploaded_df_temp.copy()
-                st.session_state.answered_words = set(st.session_state.quiz_df[
-                    (st.session_state.quiz_df['正解回数'] > 0) | (st.session_state.quiz_df['不正解回数'] > 0)
-                ]["単語"].tolist())
+                self._load_uploaded_data()
             else:
-                self._initialize_quiz_df_from_original()
+                # アップロードが選択されているがまだファイルがない場合など、初期データでフォールバック
+                self._load_initial_data()
                 
+    def _initialize_session(self):
+        """セッション状態をデフォルト値で初期化します。既に存在する場合は更新しません。"""
+        for key, val in self.defaults.items():
+            if key not in st.session_state:
+                st.session_state[key] = val
+            # answered_wordsがsetでない場合はsetに変換（互換性のため）
+            if key == "answered_words" and not isinstance(st.session_state[key], set):
+                st.session_state[key] = set(st.session_state[key])
+
+    def _load_initial_data(self):
+        """初期データをquiz_dfにロードします。"""
+        st.session_state.quiz_df = self.initial_df.copy()
+        st.session_state.answered_words = set(st.session_state.quiz_df[
+            (st.session_state.quiz_df['正解回数'] > 0) | (st.session_state.quiz_df['不正解回数'] > 0)
+        ]["単語"].tolist())
+        self._reset_quiz_state_only() # クイズの現在の状態をリセット
+
+    def _load_uploaded_data(self):
+        """アップロードされたデータをquiz_dfにロードします。"""
+        if st.session_state.uploaded_df_temp is not None:
+            st.session_state.quiz_df = st.session_state.uploaded_df_temp.copy()
+            st.session_state.answered_words = set(st.session_state.quiz_df[
+                (st.session_state.quiz_df['正解回数'] > 0) | (st.session_state.quiz_df['不正解回数'] > 0)
+            ]["単語"].tolist())
+            self._reset_quiz_state_only() # クイズの現在の状態をリセット
+        else:
+            # アップロードデータがない場合は初期データをロードするなどのフォールバック処理
+            self._load_initial_data()
+
     def _process_df_types(self, df: pd.DataFrame) -> pd.DataFrame:
         """DataFrameに対して、必要なカラムの型変換と初期化を適用します。"""
         if '〇×結果' not in df.columns: df['〇×結果'] = ''
@@ -69,29 +96,30 @@ class QuizApp:
         if '使用理由／文脈' not in df.columns: df['使用理由／文脈'] = ''
         if '試験区分' not in df.columns: df['試験区分'] = ''
         
-        # 修正済み: 閉じ括弧が『になっていたのを修正
         if '出題確率（推定）' not in df.columns: df['出題確率（推定）'] = '' 
         
         if '改定の意図・影響' not in df.columns: df['改定の意図・影響'] = ''
 
         return df
 
-    def _initialize_session(self):
-        """セッション状態をデフォルト値で初期化します。"""
-        for key, val in self.defaults.items():
-            if key not in st.session_state:
-                st.session_state[key] = val
-            if key == "answered_words" and not isinstance(st.session_state[key], set):
-                st.session_state[key] = set(st.session_state[key])
+    def _reset_quiz_state_only(self):
+        """クイズの進行に関するセッションステートのみをリセットします。
+        データソース選択の切り替え時に呼び出されます。
+        """
+        st.session_state.total = 0
+        st.session_state.correct = 0
+        st.session_state.latest_result = ""
+        st.session_state.latest_correct_description = ""
+        st.session_state.current_quiz = None
+        st.session_state.quiz_answered = False
+        st.session_state.quiz_choice_index = 0
+        st.session_state.debug_message_quiz_start = ""
+        st.session_state.debug_message_answer_update = ""
+        st.session_state.debug_message_error = ""
+        st.session_state.debug_message_answer_end = ""
+        # フィルターはリセットしない
 
-    def _initialize_quiz_df_from_original(self):
-        """アプリ起動時またはリセット時にinitial_dfからquiz_dfを初期化します。"""
-        st.session_state.quiz_df = self.initial_df.copy()
-        st.session_state.answered_words = set(st.session_state.quiz_df[
-            (st.session_state.quiz_df['正解回数'] > 0) | (st.session_state.quiz_df['不正解回数'] > 0)
-        ]["単語"].tolist())
-
-    def _reset_session_state(self):
+    def _reset_learning_history(self):
         """現在のquiz_dfの学習履歴のみをリセットします。データソースは維持されます。"""
         st.session_state.quiz_df['〇×結果'] = ''
         st.session_state.quiz_df['正解回数'] = 0
@@ -101,15 +129,10 @@ class QuizApp:
 
         st.session_state.answered_words = set()
 
-        for key, val in self.defaults.items():
-            if key not in ["quiz_df", "data_source_selection", "uploaded_df_temp", "uploaded_file_name", "uploaded_file_size",
-                           "filter_category", "filter_field", "filter_level"]: 
-                st.session_state[key] = val if not isinstance(val, set) else set()
-        
-        st.session_state.current_quiz = None 
-        st.session_state.quiz_answered = False 
-        st.session_state.quiz_choice_index = 0 
+        # クイズの進行状態もリセット
+        self._reset_quiz_state_only()
 
+        # フィルターはデフォルトに戻す
         st.session_state.filter_category = "すべて"
         st.session_state.filter_field = "すべて"
         st.session_state.filter_level = "すべて"
@@ -122,7 +145,7 @@ class QuizApp:
         このメソッドは、サイドバーにフィルターUIを表示する役割も持ちます。
         """
         if st.session_state.quiz_df is None or st.session_state.quiz_df.empty:
-            return pd.DataFrame(), pd.DataFrame() # 空のDataFrameを返す
+            return pd.DataFrame(), pd.DataFrame() 
 
         df = st.session_state.quiz_df.copy()
 
@@ -412,11 +435,10 @@ class QuizApp:
         uploaded_file = st.sidebar.file_uploader("CSVファイルをアップロード", type=["csv"], key="uploader", label_visibility="hidden") 
         
         if uploaded_file is not None:
-            try:
-                # ファイル名とサイズが変更された場合のみ再読み込み
-                if st.session_state.uploaded_file_name != uploaded_file.name or \
-                   st.session_state.get('uploaded_file_size') != uploaded_file.size: 
-                    
+            # ファイル名とサイズが変更された場合のみ再読み込み
+            if st.session_state.uploaded_file_name != uploaded_file.name or \
+               st.session_state.get('uploaded_file_size') != uploaded_file.size: 
+                try:
                     uploaded_df = pd.read_csv(uploaded_file, encoding="utf-8-sig")
                     
                     required_core_cols = ["単語", "説明", "カテゴリ", "分野"]
@@ -435,17 +457,17 @@ class QuizApp:
                     st.session_state.uploaded_file_size = uploaded_file.size
                     st.sidebar.success(f"✅ ファイル '{uploaded_file.name}' を一時的に読み込みました。")
                     
-                    # データソースをアップロードに設定し、再実行して quiz_df に反映させる
+                    # アップロード成功後、データソースをアップロードに設定し、quiz_dfを更新して再実行
                     st.session_state.data_source_selection = "アップロード"
+                    # ここで直接 _load_uploaded_data を呼び出し、その後に rerun
+                    self._load_uploaded_data() 
                     st.rerun() 
-            except Exception as e:
-                st.sidebar.error(f"CSVファイルの読み込み中にエラーが発生しました。ファイル形式が正しいか確認してください: {e}")
-                st.session_state.uploaded_df_temp = None
-                st.session_state.uploaded_file_name = None
-                st.session_state.uploaded_file_size = None
-                st.rerun()
-
-# --- QuizAppクラスの定義ここまで ---
+                except Exception as e:
+                    st.sidebar.error(f"CSVファイルの読み込み中にエラーが発生しました。ファイル形式が正しいか確認してください: {e}")
+                    st.session_state.uploaded_df_temp = None
+                    st.session_state.uploaded_file_name = None
+                    st.session_state.uploaded_file_size = None
+                    st.rerun()
 
 # --- main関数の定義 ---
 def main():
@@ -462,7 +484,7 @@ def main():
         st.error(f"初期データの読み込み中にエラーが発生しました: {e}")
         st.stop()
 
-    quiz_app = QuizApp(original_df)
+    quiz_app = QuizApp(original_df) # QuizAppインスタンスは一度だけ作成
 
     st.title("📝 IT用語クイズアプリ")
     st.markdown("毎日少しずつIT用語を学習し、知識を定着させましょう！")
@@ -470,44 +492,40 @@ def main():
     st.sidebar.header("設定とデータ")
     
     data_source_options_radio = ["アップロード", "初期データ"]
+    
+    # ラジオボタンの値が変更された場合のコールバック関数を定義
+    def on_data_source_change():
+        if st.session_state.main_data_source_radio != st.session_state.data_source_selection:
+            st.session_state.data_source_selection = st.session_state.main_data_source_radio
+            
+            if st.session_state.data_source_selection == "初期データ":
+                quiz_app._load_initial_data()
+                st.sidebar.success("✅ 初期データに切り替えました。")
+                st.session_state.uploaded_df_temp = None
+                st.session_state.uploaded_file_name = None
+                st.session_state.uploaded_file_size = None
+            else: # "アップロード"が選択された場合
+                if st.session_state.uploaded_df_temp is not None:
+                    quiz_app._load_uploaded_data()
+                    st.sidebar.success(f"✅ アップロードされたデータ ({st.session_state.uploaded_file_name}) を適用しました。")
+                else:
+                    st.sidebar.info("ファイルをアップロードしてください。")
+                    quiz_app._load_initial_data() # アップロードデータがない場合は初期データで表示を維持
+
+            # クイズの進行状態のみをリセット
+            quiz_app._reset_quiz_state_only()
+            # このコールバック関数内で st.rerun() は呼ばない
+
     selected_source_radio = st.sidebar.radio(
         "📚 **使用するデータソースを選択**",
         options=data_source_options_radio,
         key="main_data_source_radio",
-        index=data_source_options_radio.index(st.session_state.data_source_selection) if st.session_state.data_source_selection in data_source_options_radio else 0
+        index=data_source_options_radio.index(st.session_state.data_source_selection) if st.session_state.data_source_selection in data_source_options_radio else 0,
+        on_change=on_data_source_change # ここでコールバック関数を指定
     )
 
-    if selected_source_radio != st.session_state.data_source_selection:
-        st.session_state.data_source_selection = selected_source_radio
-        
-        # データソースが切り替わった場合、セッション状態を初期化
-        if st.session_state.data_source_selection == "初期データ":
-            quiz_app._initialize_quiz_df_from_original()
-            st.sidebar.success("✅ 初期データに切り替えました。")
-            st.session_state.uploaded_df_temp = None
-            st.session_state.uploaded_file_name = None
-            st.session_state.uploaded_file_size = None
-        else: # "アップロード"が選択された場合
-            # アップロード済みのデータがあればそれを使用、なければ初期データで一旦表示
-            if st.session_state.uploaded_df_temp is not None:
-                st.session_state.quiz_df = st.session_state.uploaded_df_temp.copy()
-                st.session_state.answered_words = set(st.session_state.quiz_df[
-                    (st.session_state.quiz_df['正解回数'] > 0) | (st.session_state.quiz_df['不正解回数'] > 0)
-                ]["単語"].tolist())
-                st.sidebar.success(f"✅ アップロードされたデータ ({st.session_state.uploaded_file_name}) を適用しました。")
-            else:
-                st.sidebar.info("ファイルをアップロードしてください。")
-                quiz_app._initialize_quiz_df_from_original() # アップロード待機中は初期データで表示
-        
-        # フィルターやクイズの状態をリセット（データソース切り替え時のみ）
-        for key in ["total", "correct", "latest_result", "latest_correct_description",
-                    "current_quiz", "quiz_answered", "quiz_choice_index",
-                    "filter_category", "filter_field", "filter_level"]:
-            if key in quiz_app.defaults:
-                # 💡 修正点: val ではなく quiz_app.defaults[key] を使用
-                st.session_state[key] = quiz_app.defaults[key] if not isinstance(quiz_app.defaults[key], set) else set()
-        
-        st.rerun() # データソース切り替え時は再実行
+    # フィルタやクイズの状態リセットロジックをラジオボタンのonChangeから分離
+    # これにより、ラジオボタン変更時に不必要な再初期化が抑制される
 
     st.sidebar.markdown("---")
 
@@ -517,11 +535,13 @@ def main():
     
     st.sidebar.markdown("---")
 
-    quiz_app.offer_download()
+    # quiz_dfがロードされていることを確認してからダウンロードボタンを表示
+    if st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
+        quiz_app.offer_download()
 
     st.sidebar.markdown("---")
     if st.sidebar.button("🔄 **現在のデータの学習履歴をリセット**", help="現在使用しているデータソースの学習の進捗（正解/不正解回数、回答済み単語）を初期状態に戻します。", key="reset_button"):
-        quiz_app._reset_session_state()
+        quiz_app._reset_learning_history() # 全ての学習履歴をリセットするメソッドを呼び出す
 
     st.sidebar.markdown("---")
     st.sidebar.header("クイズの絞り込み")
@@ -542,9 +562,8 @@ def main():
     # クイズ開始ボタンの表示ロジック
     if st.session_state.current_quiz is None: 
         if not df_filtered.empty and len(remaining_df) > 0:
-            button_key = "sidebar_start_quiz_button_initial" if st.session_state.data_source_selection == "初期データ" else "sidebar_start_quiz_button_uploaded"
+            button_key = "sidebar_start_quiz_button" # キーを共通化またはより汎用的に
             if st.sidebar.button("▶️ **クイズ開始**", key=button_key):
-                # ボタンクリック時にクイズをロード
                 quiz_app.load_quiz(df_filtered, remaining_df)
                 st.rerun()
         elif len(df_filtered) > 0 and len(remaining_df) == 0:
