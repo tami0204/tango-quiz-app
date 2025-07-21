@@ -140,26 +140,33 @@ st.markdown("""
     .metric-container {
         border: 1px solid #DDDDDD;
         border-radius: 8px;
-        padding: 10px;
-        text-align: center;
-        margin-bottom: 10px;
+        padding: 5px 10px; /* 上下のパディングを減らす */
+        margin-bottom: 5px; /* マージンを減らす */
         background-color: #FFFFFF;
+        display: flex; /* Flexboxを使用 */
+        justify-content: space-between; /* ラベルと値を両端に寄せる */
+        align-items: center; /* 垂直方向中央揃え */
     }
     /* サイドバー内のメトリックコンテナの背景色を調整 */
     [data-testid="stSidebar"] .metric-container {
         background-color: #e9ecef; /* サイドバーの背景色と調和するよう調整 */
     }
-    /* --- サイドバーの件数表示文字サイズをさらに調整 --- */
+    /* --- サイドバーの件数表示文字サイズと配置を調整 --- */
     [data-testid="stSidebar"] .metric-value {
-        font-size: 1.5em; /* 2em から 1.5em に縮小 */
+        font-size: 1.3em; /* さらに小さく */
         font-weight: bold;
         color: #2F80ED;
+        text-align: right; /* 数値を右寄せ */
+        flex-grow: 1; /* 値が利用可能なスペースを埋めるようにする */
     }
     [data-testid="stSidebar"] .metric-label {
-        font-size: 0.8em; /* 0.9em から 0.8em に縮小 */
+        font-size: 0.85em; /* 0.8em から少し大きく */
         color: #666666;
+        text-align: left; /* ラベルを左寄せ */
+        min-width: 40px; /* ラベルの最小幅を設定して揃える */
+        padding-right: 5px; /* ラベルと数値の間の余白 */
     }
-    /* --- サイドバーの件数表示文字サイズ調整ここまで --- */
+    /* --- サイドバーの件数表示文字サイズと配置調整ここまで --- */
 
     /* データフレーム表示 */
     .stDataFrame {
@@ -644,10 +651,12 @@ def main():
         # フィルタリングされた単語の総数を計算
         filtered_count = len(df_filtered)
 
-        st.sidebar.markdown(f"<div class='metric-container'><div class='metric-value'>{st.session_state.correct}</div><div class='metric-label'>正解数</div></div>", unsafe_allow_html=True)
-        st.sidebar.markdown(f"<div class='metric-container'><div class='metric-value'>{st.session_state.total}</div><div class='metric-label'>回答数</div></div>", unsafe_allow_html=True)
-        st.sidebar.markdown(f"<div class='metric-container'><div class='metric-value'>{len(remaining_df)}</div><div class='metric-label'>未回答単語</div></div>", unsafe_allow_html=True)
-        st.sidebar.markdown(f"<div class='metric-container'><div class='metric-value'>{filtered_count}</div><div class='metric-label'>対象単語数</div></div>", unsafe_allow_html=True)
+        # --- 件数表示のフォーマット変更 ---
+        st.sidebar.markdown(f"<div class='metric-container'><span class='metric-label'>正解：</span><span class='metric-value'>{st.session_state.correct}</span></div>", unsafe_allow_html=True)
+        st.sidebar.markdown(f"<div class='metric-container'><span class='metric-label'>回答：</span><span class='metric-value'>{st.session_state.total}</span></div>", unsafe_allow_html=True)
+        st.sidebar.markdown(f"<div class='metric-container'><span class='metric-label'>未回答：</span><span class='metric-value'>{len(remaining_df)}</span></div>", unsafe_allow_html=True)
+        st.sidebar.markdown(f"<div class='metric-container'><span class='metric-label'>対象：</span><span class='metric-value'>{filtered_count}</span></div>", unsafe_allow_html=True)
+        # --- 変更ここまで ---
 
         # デバッグモードの切り替え
         st.sidebar.markdown("---")
