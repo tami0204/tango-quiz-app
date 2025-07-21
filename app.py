@@ -16,7 +16,7 @@ class QuizApp:
             "current_quiz": None,
             "quiz_answered": False, # 回答済みかどうかのフラグ
             "quiz_choice_index": 0, # Streamlitのフォームのキーをユニークにするためのインデックス
-            "quiz_df": None,
+            "quiz_df": None, # メインの学習データ
             "filter_category": "すべて",
             "filter_field": "すべて",
             "filter_level": "すべて", # 'シラバス改定有無'フィルター用
@@ -68,7 +68,6 @@ class QuizApp:
         if '午後記述での使用例' not in df.columns: df['午後記述での使用例'] = ''
         if '使用理由／文脈' not in df.columns: df['使用理由／文脈'] = ''
         if '試験区分' not in df.columns: df['試験区分'] = ''
-        # 修正済み: 全角の閉じ引用符を半角に修正
         if '出題確率（推定）' not in df.columns: df['出題確率（推定）'] = '' 
         if '改定の意図・影響' not in df.columns: df['改定の意図・影響'] = ''
 
@@ -229,8 +228,6 @@ class QuizApp:
 
             if submit_button and not st.session_state.quiz_answered:
                 self._handle_answer_submission(selected_option_text, current_quiz_data)
-                # _handle_answer_submission内でst.rerun()が呼ばれているため、ここでの重複呼び出しは不要
-                # ただし、回答後の表示状態を即座に更新したい場合は、ここで呼び出すのもあり
                 st.rerun() # 確実に状態を更新し、結果表示に移行させる
 
         if st.session_state.quiz_answered:
@@ -385,11 +382,17 @@ class QuizApp:
                 # アップロードされたDataFrameに型変換を適用し、不足する学習履歴カラムを初期化
                 processed_uploaded_df = self._process_df_types(uploaded_df.copy())
                 
-                # 全てのセッションステートをデフォルト値にリセット
-                # ただし、quiz_dfはここで新しいデータで上書きするためスキップ
-                for key, val in self.defaults.items():
-                    if key != "quiz_df": 
-                        st.session_state[key] = val if not isinstance(val, set) else set()
+                # 全てのセッションステートをデフォルト値にリセットし、新しいデータで初期化
+                st.session_state.total = 0
+                st.session_state.correct = 0
+                st.session_state.latest_result = ""
+                st.session_state.latest_correct_description = ""
+                st.session_state.current_quiz = None
+                st.session_state.quiz_answered = False
+                st.session_state.quiz_choice_index = 0
+                st.session_state.filter_category = "すべて"
+                st.session_state.filter_field = "すべて"
+                st.session_state.filter_level = "すべて"
                 
                 # ここでアップロードされたデータを現在の学習データとして完全に置き換える
                 st.session_state.quiz_df = processed_uploaded_df 
