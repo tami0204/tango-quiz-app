@@ -3,6 +3,7 @@ import pandas as pd
 import random
 import os
 import plotly.express as px
+import datetime # datetimeモジュールを追加
 
 class QuizApp:
     def __init__(self, df: pd.DataFrame):
@@ -170,9 +171,7 @@ class QuizApp:
 
     def show_progress(self, df_filtered):
         """現在の学習進捗（回答数、正解数）を表示します。"""
-        # --- ここから変更 ---
         st.markdown(f"📊 **進捗：{st.session_state.total} 回 / {len(df_filtered)} 語 (正解: {st.session_state.correct} 回)**")
-        # --- 変更ここまで ---
         
     def load_quiz(self, df_filtered: pd.DataFrame, remaining_df: pd.DataFrame):
         """新しいクイズをロードし、セッション状態を更新します。不正解回数に基づいて出題します。"""
@@ -327,8 +326,12 @@ class QuizApp:
 
     def offer_download(self):
         """現在の学習データのCSVダウンロードボタンを提供します。"""
+        # 現在の日時を取得し、指定されたフォーマットで文字列化
+        now = datetime.datetime.now()
+        file_name = f"tango_{now.strftime('%Y%m%d%H%M%S')}.csv"
+
         csv_quiz_data = st.session_state.quiz_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-        st.download_button("📥 **現在の学習データをダウンロード** (〇×・統計含む)", data=csv_quiz_data, file_name="updated_tango_data_with_stats.csv", mime="text/csv")
+        st.download_button("📥 **現在の学習データをダウンロード** (〇×・統計含む)", data=csv_quiz_data, file_name=file_name, mime="text/csv")
         
     def reset_session_button(self):
         """セッションをリセットするためのボタンを表示します。"""
@@ -436,83 +439,3 @@ class QuizApp:
     def run(self):
         """アプリケーションのメイン実行ロジックです。"""
         st.set_page_config(layout="wide", page_title="用語クイズアプリ")
-
-        st.markdown("""
-            <style>
-            .stApp { background-color: #f0f2f6; }
-            .stButton>button { background-color: #4CAF50; color: white; border-radius: 12px; padding: 10px 24px; font-size: 16px; transition-duration: 0.4s; box-shadow: 0 8px 16px 0 rgba(0,0,0,0.2), 0 6px 20px 0 rgba(0,0,0,0.19); }
-            .stButton>button:hover { background-color: #45a049; color: white; }
-            .stRadio > label { font-size: 18px; margin-bottom: 10px; padding: 10px; border-radius: 8px; background-color: #e6e6e6; border: 1px solid #ddd; }
-            .stRadio > label:hover { background-color: #dcdcdc; }
-            .stRadio > label[data-baseweb="radio"] > div > span[data-testid="stDecoration"] { cursor: default !important; }
-            .stRadio > label[data-baseweb="radio"][data-state="disabled"] { opacity: 0.7; cursor: not-allowed; }
-            .stRadio > label > div > p { font-weight: bold; }
-            h1, h2, h3 { color: #2e4053; }
-            .stInfo { background-color: #e0f2f7; color: #2196F3; border-radius: 8px; padding: 15px; margin-top: 20px; border: 1px solid #90caf9; }
-            .stSuccess { background-color: #e8f5e9; color: #4CAF50; border-radius: 8px; padding: 15px; margin-top: 20px; border: 1px solid #a5d6a7; }
-            .stError { background-color: #ffebee; color: #f44336; border-radius: 8px; padding: 15px; margin-top: 20px; border: 1px solid #ef9a9a; }
-            div[data-baseweb="select"] > div:first-child { background-color: white !important; border: 1px solid #999 !important; border-radius: 8px; }
-            div[data-baseweb="select"] div[role="listbox"] { background-color: white !important; border: 1px solid #999 !important; border-radius: 8px; }
-            div[data-baseweb="select"] input[type="text"] { background-color: white !important; border: none !important; }
-            div[data-baseweb="select"] span { color: #333; }
-            </style>
-            """, unsafe_allow_html=True)
-
-        st.title("用語クイズアプリ")
-
-        df_filtered, remaining_df = self.filter_data()
-        self.show_progress(df_filtered)
-
-        with st.expander("📊 **学習統計を表示**"):
-            self.display_statistics()
-
-        with st.expander("📂 **読み込みデータの確認**"):
-            st.dataframe(st.session_state.quiz_df.head())
-
-        if st.session_state.current_quiz is None and not remaining_df.empty:
-            self.load_quiz(df_filtered, remaining_df)
-
-        if remaining_df.empty and st.session_state.current_quiz is None:
-            self.show_completion()
-        elif st.session_state.current_quiz:
-            self.display_quiz(df_filtered, remaining_df)
-        else:
-            # フィルター条件に合う単語が一つもない場合のメッセージ
-            st.info("選択されたフィルター条件に合致する単語が見つからないか、すべての単語に回答済みです。")
-
-
-        self.offer_download()
-        st.markdown("---")
-        self.reset_session_button()
-
-# --- アプリ実行部分 ---
-try:
-    file_name = "tango.csv" 
-    
-    if not os.path.exists(file_name):
-        st.error(f"❌ '{file_name}' が見つかりません。")
-        st.info("必要な列: カテゴリ, 分野, 単語, 説明, 午後記述での使用例, 使用理由／文脈, 試験区分, 出題確率（推定）, シラバス改定有無, 改定の意図・影響, 〇×結果")
-        st.stop()
-
-    try:
-        df = pd.read_csv(file_name, encoding='utf-8', header=0, delimiter=',')
-    except UnicodeDecodeError:
-        try:
-            df = pd.read_csv(file_name, encoding='utf_8_sig', header=0, delimiter=',')
-        except Exception as e:
-            st.error(f"❌ CSV/TSVファイルのエンコーディングを自動判別できませんでした。エラー: {e}")
-            st.info("ファイルがUTF-8 (BOMなし/あり) で保存されているか確認してください。")
-            st.stop()
-    
-    required_columns = ["カテゴリ", "分野", "単語", "説明", "午後記述での使用例", "使用理由／文脈", "試験区分", "出題確率（推定）", "シラバス改定有無", "改定の意図・影響", "〇×結果"]
-
-    if not all(col in df.columns for col in required_columns):
-        missing_cols = [col for col in required_columns if col not in df.columns]
-        st.error(f"❌ '{file_name}' に必要な列が不足しています。不足している列: {', '.join(missing_cols)}")
-        st.stop()
-    
-    app = QuizApp(df)
-    app.run()
-except Exception as e:
-    st.error(f"エラーが発生しました: {e}")
-    st.info("データファイルの内容を確認してください。列名やデータ形式が正しいか、ファイルが破損していないか確認してください。")
