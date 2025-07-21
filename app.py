@@ -607,7 +607,7 @@ def main():
         if st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
             csv_data, file_name = quiz_app.offer_download()
             st.download_button(
-                "📥 **学習データをダウンロード**", 
+                "📥 **結果ダウンロード**", # ここを変更しました
                 data=csv_data, 
                 file_name=file_name, 
                 mime="text/csv",
