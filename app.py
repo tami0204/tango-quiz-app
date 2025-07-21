@@ -190,8 +190,12 @@ class QuizApp:
         st.session_state.current_quiz = selected_quiz_row.to_dict()
 
         correct_description = st.session_state.current_quiz["説明"]
+        
         # quiz_df全体から、現在の問題の「説明」と異なる説明文を抽出
-        other_descriptions = st.session_state.quiz_df[st.session_state.quiz_df["説明"] != correct_description]["説明"].unique().tolist()
+        # まずユニークな説明文のリストを取得
+        all_descriptions = st.session_state.quiz_df["説明"].unique().tolist()
+        # 正しい説明文を除外
+        other_descriptions = [desc for desc in all_descriptions if desc != correct_description]
         
         num_wrong_choices = min(3, len(other_descriptions))
         wrong_choices = random.sample(other_descriptions, num_wrong_choices)
