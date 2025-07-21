@@ -199,7 +199,6 @@ class QuizApp:
 
         if st.session_state.quiz_answered:
             st.markdown(f"### {st.session_state.latest_result}")
-            # 正解の説明を再表示
             if st.session_state.latest_result.startswith("❌"):
                 st.info(f"正解は: **{st.session_state.latest_correct_description}** でした。")
             else:
@@ -273,6 +272,19 @@ class QuizApp:
             return
 
         progress_percent = (answered_filtered_words / total_filtered_words) if total_filtered_words > 0 else 0
+        
+        # カスタムCSSでプログレスバーのテキストサイズを調整
+        st.markdown(
+            f"""
+            <style>
+            .stProgress .stProgressText {{
+                font-size: 1.2em; /* デフォルトより大きくする */
+                font-weight: bold;
+            }}
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
         st.progress(progress_percent, text=f"回答済み: {answered_filtered_words} / {total_filtered_words} 単語")
 
     def show_completion(self):
@@ -289,7 +301,7 @@ class QuizApp:
         
         display_df = display_df[
             (display_df['正解回数'] > 0) | (display_df['不正解回数'] > 0)
-        ].sort_values(by=['不正解回数', '正解回数', '最終実施日時'], ascending=[False, False, False]) # ここを修正しました
+        ].sort_values(by=['不正解回数', '正解回数', '最終実施日時'], ascending=[False, False, False])
         
         if not display_df.empty:
             display_df['最終実施日時'] = display_df['最終実施日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
