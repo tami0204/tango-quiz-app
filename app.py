@@ -62,7 +62,7 @@ class QuizApp:
         if 'シラバス改定有無' not in df.columns:
             df['シラバス改定有無'] = ''
         else:
-            df['シラバス改定有無'] = df['シラバス改定有無'].astype(str).replace('nan', '')
+            df['シラバス改定有無'] = df['シlaバス改定有無'].astype(str).replace('nan', '')
             
         # その他の必須ではないが、データに存在する可能性のあるカラムの処理
         if '午後記述での使用例' not in df.columns: df['午後記述での使用例'] = ''
@@ -202,7 +202,8 @@ class QuizApp:
         num_wrong_choices = min(3, len(other_descriptions))
         
         # 間違った選択肢をランダムに選択
-        wrong_choices = random.sample(other_descriptions, num_wrong_choices)
+        # This is line 197. Ensure no extra characters or odd spacing here.
+        wrong_choices = random.sample(other_descriptions, num_wrong_choices) 
 
         choices = wrong_choices + [correct_description]
         random.shuffle(choices)
