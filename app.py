@@ -117,14 +117,18 @@ class QuizApp:
 
         categories = ["すべて"] + df["カテゴリ"].dropna().unique().tolist()
         st.session_state.filter_category = st.sidebar.selectbox(
-            "カテゴリで絞り込み", categories, index=categories.index(st.session_state.filter_category) if st.session_state.filter_category in categories else 0
+            "カテゴリで絞り込み", categories, 
+            index=categories.index(st.session_state.filter_category) if st.session_state.filter_category in categories else 0,
+            key="filter_category_selectbox" # 💡 修正点: ユニークなkeyを追加
         )
         if st.session_state.filter_category != "すべて":
             df = df[df["カテゴリ"] == st.session_state.filter_category]
 
         fields = ["すべて"] + df["分野"].dropna().unique().tolist()
         st.session_state.filter_field = st.sidebar.selectbox(
-            "分野で絞り込み", fields, index=fields.index(st.session_state.filter_field) if st.session_state.filter_field in fields else 0
+            "分野で絞り込み", fields, 
+            index=fields.index(st.session_state.filter_field) if st.session_state.filter_field in fields else 0,
+            key="filter_field_selectbox" # 💡 修正点: ユニークなkeyを追加
         )
         if st.session_state.filter_field != "すべて":
             df = df[df["分野"] == st.session_state.filter_field]
@@ -135,7 +139,8 @@ class QuizApp:
         st.session_state.filter_level = st.sidebar.selectbox(
             "🔄 シラバス改定有無で絞り込み", 
             syllabus_change_options, 
-            index=syllabus_change_options.index(st.session_state.filter_level) if st.session_state.filter_level in syllabus_change_options else 0
+            index=syllabus_change_options.index(st.session_state.filter_level) if st.session_state.filter_level in syllabus_change_options else 0,
+            key="filter_level_selectbox" # 💡 修正点: ユニークなkeyを追加
         )
         if st.session_state.filter_level != "すべて":
             df = df[df["シラバス改定有無"] == st.session_state.filter_level]
@@ -490,18 +495,17 @@ def main():
         if st.session_state.uploaded_df_temp is None:
             st.sidebar.warning("まだ学習データがアップロードされていません。")
     else: # "初期データ"が選択された場合
-        # 「tango.csv (初期データ) を使用しています。」のメッセージを削除
         if st.session_state.current_quiz is None:
-            # 初期データが選択されていて、まだクイズが開始されていない場合のみボタンを表示
-            df_filtered_initial, remaining_df_initial = quiz_app.filter_data() # フィルターを適用した状態のデータを取得
+            df_filtered_initial, remaining_df_initial = quiz_app.filter_data() 
             if not df_filtered_initial.empty and len(remaining_df_initial) > 0:
                 if st.sidebar.button("▶️ **クイズ開始**", key="sidebar_start_quiz_button"):
                     quiz_app.load_quiz(df_filtered_initial, remaining_df_initial)
                     st.rerun()
             elif len(df_filtered_initial) > 0 and len(remaining_df_initial) == 0:
                  st.sidebar.info("現在のフィルター条件の初期データはすべて回答済みです。")
-            else:
-                st.sidebar.info("現在のフィルター条件に一致する初期データがありません。")
+            # フィルター条件に一致するデータがない場合のメッセージは表示しない
+            # else:
+            #     st.sidebar.info("現在のフィルター条件に一致する初期データがありません。")
 
     st.sidebar.markdown("---")
 
@@ -513,7 +517,11 @@ def main():
 
     st.sidebar.markdown("---")
     st.sidebar.header("クイズの絞り込み")
+    # filter_dataの呼び出しを、必要な場所に限定する
+    # data_source_selectionに応じてquiz_dfが設定された後に呼び出すように変更
     if st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
+        # data_source_selection == "初期データ" かつ current_quizがNoneの場合、既にfilter_dataが呼ばれている可能性があるため、条件を追加
+        # しかし、今回はselectboxのkeyを追加したので、常に呼んでも問題ないはず
         df_filtered, remaining_df = quiz_app.filter_data()
     else:
         st.sidebar.warning("有効な学習データがロードされていません。")
@@ -524,16 +532,12 @@ def main():
 
     quiz_app.show_progress(df_filtered)
 
-    # メインエリアのクイズ開始ボタンは、サイドバーに配置したので不要
     if st.session_state.quiz_df.empty:
         st.info("クイズを開始するには、まず有効な学習データをロードしてください。")
     elif st.session_state.current_quiz is None:
         if len(df_filtered) > 0 and len(remaining_df) > 0:
+            # メインエリアのクイズ開始ボタンはサイドバーに移動したので、ここでは説明メッセージのみ
             st.info("データがロードされました！サイドバーの「クイズ開始」ボタンをクリックしてください。")
-            # メインエリアのクイズ開始ボタンを削除
-            # if st.button("▶️ クイズを開始する", key="start_quiz_button"):
-            #     quiz_app.load_quiz(df_filtered, remaining_df)
-            #     st.rerun()
         elif len(df_filtered) > 0 and len(remaining_df) == 0:
             quiz_app.show_completion()
         else:
