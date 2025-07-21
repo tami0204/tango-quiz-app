@@ -181,7 +181,7 @@ class QuizApp:
         st.write(f"🧩 **午後記述での使用例：** {current_quiz_data.get('午後記述での使用例', 'N/A')}")
         st.write(f"🎯 **使用理由／文脈：** {current_quiz_data.get('使用理由／文脈', 'N/A')}")
         st.write(f"🕘 **試験区分：** {current_quiz_data.get('試験区分', 'N/A')}")
-        st.write(f"📈 **出題確率（推定）：** {current_quiz_data.get('出題確率（推定）', 'N/A')}　📝 **改定の意図・影響：** {current_quiz_data.get('改定の意図・影響', 'N/A')}")
+        st.write(f"📈 **出題確率（推定）：：** {current_quiz_data.get('出題確率（推定）', 'N/A')}　📝 **改定の意図・影響：** {current_quiz_data.get('改定の意図・影響', 'N/A')}")
         
         with st.form("quiz_form"):
             selected_option_text = st.radio(
@@ -273,19 +273,9 @@ class QuizApp:
 
         progress_percent = (answered_filtered_words / total_filtered_words) if total_filtered_words > 0 else 0
         
-        # カスタムCSSでプログレスバーのテキストサイズを調整
-        st.markdown(
-            f"""
-            <style>
-            .stProgress .stProgressText {{
-                font-size: 1.2em; /* デフォルトより大きくする */
-                font-weight: bold;
-            }}
-            </style>
-            """,
-            unsafe_allow_html=True
-        )
-        st.progress(progress_percent, text=f"回答済み: {answered_filtered_words} / {total_filtered_words} 単語")
+        # プログレスバーの上のテキストを大きく表示
+        st.markdown(f"**<span style='font-size: 1.5em;'>回答済み: {answered_filtered_words} / {total_filtered_words} 単語</span>**", unsafe_allow_html=True)
+        st.progress(progress_percent) # プログレスバー自体はシンプルに表示
 
     def show_completion(self):
         """すべての問題が終了した際に表示するメッセージ。"""
