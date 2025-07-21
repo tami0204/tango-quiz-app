@@ -15,7 +15,7 @@ class QuizApp:
             "latest_correct_description": "",
             "current_quiz": None,
             "quiz_answered": False,
-            "quiz_choice_index": 0,
+            "quiz_choice_index": 0, # クイズの選択肢のインデックスではなく、フォームリセット用
             "quiz_df": None,
             "filter_category": "すべて",
             "filter_field": "すべて",
@@ -68,7 +68,7 @@ class QuizApp:
         if '午後記述での使用例' not in df.columns: df['午後記述での使用例'] = ''
         if '使用理由／文脈' not in df.columns: df['使用理由／文脈'] = ''
         if '試験区分' not in df.columns: df['試験区分'] = ''
-        if '出題確率（推定）' not in df.columns: df['出題確率（推定）'] = ''
+        if '出題確率（推定）' not in df.columns: df['出題確率（推定）』 = ''
         if '改定の意図・影響' not in df.columns: df['改定の意図・影響'] = ''
 
         return df
@@ -144,8 +144,12 @@ class QuizApp:
 
     def load_quiz(self, df_filtered: pd.DataFrame, remaining_df: pd.DataFrame):
         """クイズの単語をロードします。不正解回数や最終実施日時を考慮します。"""
-        if st.session_state.quiz_answered:
-            st.session_state.quiz_answered = False # 回答済みのフラグをリセット
+        # load_quizが呼ばれる前にquiz_answeredがFalseになっていることを確認
+        # これは_handle_answer_submission後のrerunでリセットされるか、
+        # あるいはdisplay_quizの「次の問題へ」ボタンでリセットされることを前提
+        if st.session_state.quiz_answered: # 念のためここでもリセットロジックを再確認
+            st.session_state.quiz_answered = False 
+            st.session_state.quiz_choice_index = 0 # フォームのリセットも確実に行う
 
         quiz_candidates_df = pd.DataFrame() # 出題候補のDataFrame
 
@@ -193,7 +197,8 @@ class QuizApp:
         random.shuffle(choices)
         st.session_state.current_quiz["choices"] = choices
         
-        st.session_state.quiz_choice_index = 0 # 問題ごとのラジオボタンキーをリセット
+        # load_quizが呼ばれるたびにquiz_choice_indexをインクリメントし、フォームのキーをユニークにする
+        st.session_state.quiz_choice_index += 1 
 
     def display_quiz(self, df_filtered: pd.DataFrame, remaining_df: pd.DataFrame):
         """クイズを表示し、ユーザーの回答を処理します。"""
@@ -207,18 +212,20 @@ class QuizApp:
         st.write(f"🕘 **試験区分：** {current_quiz_data.get('試験区分', 'N/A')}")
         st.write(f"📈 **出題確率（推定）：：** {current_quiz_data.get('出題確率（推定）', 'N/A')}　📝 **改定の意図・影響：** {current_quiz_data.get('改定の意図・影響', 'N/A')}")
         
-        with st.form("quiz_form"):
+        # フォームのキーに quiz_choice_index を含めて、問題が変わるたびにフォームをリセット
+        with st.form(key=f"quiz_form_{st.session_state.quiz_choice_index}"):
             selected_option_text = st.radio(
                 "説明を選択してください:",
                 options=current_quiz_data["choices"],
                 format_func=lambda x: f"{self.kana_labels[current_quiz_data['choices'].index(x)]}. {x}",
-                key=f"quiz_radio_{st.session_state.total}", # ユニークなキー
-                disabled=st.session_state.quiz_answered
+                key=f"quiz_radio_{st.session_state.quiz_choice_index}", # ラジオボタンのキーもフォームのキーと連動
+                disabled=st.session_state.quiz_answered # 回答済みの場合は無効化
             )
             submit_button = st.form_submit_button("✅ 答え合わせ", disabled=st.session_state.quiz_answered)
 
             if submit_button and not st.session_state.quiz_answered:
                 self._handle_answer_submission(selected_option_text, current_quiz_data)
+                # フォーム送信後、st.rerun()でページを再読み込みし、状態を更新
                 st.rerun()
 
         if st.session_state.quiz_answered:
@@ -239,13 +246,15 @@ class QuizApp:
             st.markdown("---")
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("➡️ 次の問題へ"):
+                # 「次の問題へ」ボタンが押されたら、quiz_answeredをリセットして次の問題をロード
+                if st.button("➡️ 次の問題へ", key=f"next_quiz_button_{st.session_state.quiz_choice_index}"):
                     st.session_state.current_quiz = None
-                    st.session_state.quiz_answered = False
+                    st.session_state.quiz_answered = False # 回答済みフラグをリセット
                     st.rerun()
             with col2:
-                if st.button("🔄 この単語をもう一度出題"):
-                    st.session_state.quiz_answered = False
+                # 「この単語をもう一度出題」ボタンもquiz_answeredをリセット
+                if st.button("🔄 この単語をもう一度出題", key=f"retry_quiz_button_{st.session_state.quiz_choice_index}"):
+                    st.session_state.quiz_answered = False # 回答済みフラグをリセット
                     st.rerun()
 
     def _handle_answer_submission(self, selected_option_text: str, current_quiz_data: dict):
@@ -281,6 +290,7 @@ class QuizApp:
                 temp_df.at[idx, '不正解回数'] += 1
             
             temp_df.at[idx, '最終実施日時'] = datetime.datetime.now()
+            # 次回実施予定日時は、今回は最終実施日時と同じに設定（間隔学習などのロジックは別途実装が必要）
             temp_df.at[idx, '次回実施予定日時'] = datetime.datetime.now() 
 
         st.session_state.quiz_df = temp_df # 更新されたDataFrameをセッションに保存
