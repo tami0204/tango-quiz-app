@@ -14,8 +14,8 @@ class QuizApp:
             "latest_result": "",
             "latest_correct_description": "",
             "current_quiz": None,
-            "quiz_answered": False,
-            "quiz_choice_index": 0, # クイズの選択肢のインデックスではなく、フォームリセット用
+            "quiz_answered": False, # 回答済みかどうかのフラグ
+            "quiz_choice_index": 0, # Streamlitのフォームのキーをユニークにするためのインデックス
             "quiz_df": None,
             "filter_category": "すべて",
             "filter_field": "すべて",
@@ -68,16 +68,18 @@ class QuizApp:
         if '午後記述での使用例' not in df.columns: df['午後記述での使用例'] = ''
         if '使用理由／文脈' not in df.columns: df['使用理由／文脈'] = ''
         if '試験区分' not in df.columns: df['試験区分'] = ''
-        # **修正箇所1: 全角の閉じ引用符を半角に修正**
+        # 修正済み: 全角の閉じ引用符を半角に修正
         if '出題確率（推定）' not in df.columns: df['出題確率（推定）'] = '' 
         if '改定の意図・影響' not in df.columns: df['改定の意図・影響'] = ''
 
         return df
 
     def _initialize_session(self):
+        """セッション状態をデフォルト値で初期化します。"""
         for key, val in self.defaults.items():
             if key not in st.session_state:
                 st.session_state[key] = val
+            # answered_wordsがセット型であることを保証
             if key == "answered_words" and not isinstance(st.session_state[key], set):
                 st.session_state[key] = set(st.session_state[key])
 
@@ -97,11 +99,14 @@ class QuizApp:
         
         # その他のセッション状態をデフォルトに戻す
         for key, val in self.defaults.items():
-            if key not in ["quiz_df", "filter_category", "filter_field", "filter_level"]:
+            if key not in ["quiz_df", "filter_category", "filter_field", "filter_level"]: # quiz_dfとフィルターは後で適切に設定
                 st.session_state[key] = val if not isinstance(val, set) else set()
         st.session_state.filter_category = "すべて"
         st.session_state.filter_field = "すべて"
         st.session_state.filter_level = "すべて"
+        st.session_state.current_quiz = None # 現在のクイズをリセット
+        st.session_state.quiz_answered = False # 回答済みフラグをリセット
+        st.session_state.quiz_choice_index = 0 # フォームのキーもリセット
 
         st.success("✅ セッションをリセットし、学習データを初期化しました。")
         st.rerun()
@@ -146,17 +151,14 @@ class QuizApp:
     def load_quiz(self, df_filtered: pd.DataFrame, remaining_df: pd.DataFrame):
         """クイズの単語をロードします。不正解回数や最終実施日時を考慮します。"""
         # load_quizが呼ばれる前にquiz_answeredがFalseになっていることを確認
-        # これは_handle_answer_submission後のrerunでリセットされるか、
-        # あるいはdisplay_quizの「次の問題へ」ボタンでリセットされることを前提
-        if st.session_state.quiz_answered: # 念のためここでもリセットロジックを再確認
+        if st.session_state.quiz_answered: 
             st.session_state.quiz_answered = False 
-            st.session_state.quiz_choice_index = 0 # フォームのリセットも確実に行う
+            st.session_state.quiz_choice_index += 1 # フォームのリセットも確実に行う
 
         quiz_candidates_df = pd.DataFrame() # 出題候補のDataFrame
 
         # 1. 不正解回数が多く、かつ回答履歴がある単語を優先的に候補に入れる
         answered_and_struggled = df_filtered[
-            # **修正箇所2: 比較対象の列を指定**
             (df_filtered["単語"].isin(st.session_state.answered_words)) &
             (df_filtered["不正解回数"] > df_filtered["正解回数"])
         ].copy()
@@ -227,8 +229,9 @@ class QuizApp:
 
             if submit_button and not st.session_state.quiz_answered:
                 self._handle_answer_submission(selected_option_text, current_quiz_data)
-                # フォーム送信後、st.rerun()でページを再読み込みし、状態を更新
-                st.rerun()
+                # _handle_answer_submission内でst.rerun()が呼ばれているため、ここでの重複呼び出しは不要
+                # ただし、回答後の表示状態を即座に更新したい場合は、ここで呼び出すのもあり
+                st.rerun() # 確実に状態を更新し、結果表示に移行させる
 
         if st.session_state.quiz_answered:
             st.markdown(f"### {st.session_state.latest_result}")
@@ -251,12 +254,12 @@ class QuizApp:
                 # 「次の問題へ」ボタンが押されたら、quiz_answeredをリセットして次の問題をロード
                 if st.button("➡️ 次の問題へ", key=f"next_quiz_button_{st.session_state.quiz_choice_index}"):
                     st.session_state.current_quiz = None
-                    st.session_state.quiz_answered = False # 回答済みフラグをリセット
+                    st.session_state.quiz_answered = False # 回答済みフラグをリセット **ここでリセットされる**
                     st.rerun()
             with col2:
                 # 「この単語をもう一度出題」ボタンもquiz_answeredをリセット
                 if st.button("🔄 この単語をもう一度出題", key=f"retry_quiz_button_{st.session_state.quiz_choice_index}"):
-                    st.session_state.quiz_answered = False # 回答済みフラグをリセット
+                    st.session_state.quiz_answered = False # 回答済みフラグをリセット **ここでリセットされる**
                     st.rerun()
 
     def _handle_answer_submission(self, selected_option_text: str, current_quiz_data: dict):
@@ -264,7 +267,6 @@ class QuizApp:
         st.session_state.total += 1
         st.session_state.answered_words.add(current_quiz_data["単語"])
 
-        # **修正箇所3: 閉じ引用符を追加**
         is_correct = (selected_option_text == current_quiz_data["説明"])
         result_mark = "〇" if is_correct else "×"
 
@@ -338,7 +340,6 @@ class QuizApp:
         # 回答履歴のある単語のみ表示、またはすべての単語を表示するか選択肢を設けることも可能だが、今回は回答履歴のみ
         display_df = display_df[
             (display_df['正解回数'] > 0) | (display_df['不正解回数'] > 0)
-        # **修正箇所4: 閉じ角括弧を追加**
         ].sort_values(by=['不正解回数', '正解回数', '最終実施日時'], ascending=[False, False, False])
         
         if not display_df.empty:
@@ -385,8 +386,9 @@ class QuizApp:
                 processed_uploaded_df = self._process_df_types(uploaded_df.copy())
                 
                 # 全てのセッションステートをデフォルト値にリセット
+                # ただし、quiz_dfはここで新しいデータで上書きするためスキップ
                 for key, val in self.defaults.items():
-                    if key != "quiz_df": # quiz_dfはここで新しいデータで上書きするためスキップ
+                    if key != "quiz_df": 
                         st.session_state[key] = val if not isinstance(val, set) else set()
                 
                 # ここでアップロードされたデータを現在の学習データとして完全に置き換える
@@ -427,17 +429,18 @@ class QuizApp:
 
         self.show_progress(df_filtered)
 
-        if st.session_state.current_quiz is None:
+        # current_quizがNoneの場合にのみ新しいクイズをロード
+        if st.session_state.current_quiz is None and not remaining_df.empty:
             self.load_quiz(df_filtered, remaining_df)
+        elif st.session_state.current_quiz is None and remaining_df.empty and st.session_state.total > 0:
+            # フィルターされた問題がすべて回答済みで、かつ過去に問題が出題された場合
+            self.show_completion()
+        elif st.session_state.current_quiz is None and remaining_df.empty and st.session_state.total == 0:
+             st.info("選択されたフィルター条件に一致する単語がないか、データがありません。")
+             st.info("フィルターを変更するか、学習データをリセットしてください。")
 
         if st.session_state.current_quiz is not None:
             self.display_quiz(df_filtered, remaining_df)
-        elif st.session_state.total > 0:
-            self.show_completion()
-        else:
-            st.info("選択されたフィルター条件に一致する単語がないか、すべての単語を回答しました！")
-            st.info("フィルターを変更するか、学習データをリセットしてください。")
-
 
         st.markdown("---")
         self.display_statistics()
