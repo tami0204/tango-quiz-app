@@ -39,7 +39,8 @@ defaults = {
     "quiz_mode": "復習",
     "main_data_source_radio": "初期データ",
     "current_data_file": "tango.csv",
-    "last_loaded_file_message": "" # 新しいセッション状態：最後にロードされたファイルメッセージ
+    "last_loaded_file_message": "", # 新しいセッション状態：最後にロードされたファイルメッセージ
+    "has_shown_initial_load_message": False # 起動時のロードメッセージを一度だけ表示するためのフラグ
 }
 
 for key, val in defaults.items():
@@ -201,6 +202,9 @@ class QuizApp:
         st.session_state.quiz_answered = False
         st.session_state.quiz_choice_index = 0
         st.session_state.answered_words = set()
+        if st.session_state.debug_mode:
+            st.info("DEBUG: クイズ状態（スコア、現在の問題など）がリセットされました。")
+
 
     def _load_data_from_file(self, file_path, is_initial_load=False):
         """指定されたファイルパスからデータをロードし、quiz_dfを更新する。成功可否を返す。
@@ -217,9 +221,6 @@ class QuizApp:
             st.session_state.current_data_file = file_path # ファイル名をセッション状態に保存
 
             # 初回ロード時以外はクイズ状態をリセット
-            # 初回ロード時は、フィルタや現在のクイズ状態を維持したい場合があるので
-            # ここではreset_quiz_state_onlyを呼ばない。
-            # main()関数の初期ロード部分で適切なタイミングでreset_quiz_state_onlyが呼ばれる
             if not is_initial_load:
                 self._reset_quiz_state_only()
 
@@ -304,7 +305,8 @@ class QuizApp:
                     # CSVから読み込む際にタイムゾーン情報がない場合はJSTとしてローカライズ
                     # タイムゾーン情報がある場合はJSTに変換
                     df[col_name] = pd.to_datetime(df[col_name], errors='coerce', utc=True)
-                    df[col_name] = df[col_name].dt.tz_convert(self.jst_timezone) # JSTに変換
+                    # NaNでない場合のみタイムゾーン変換を適用
+                    df[col_name] = df[col_name].apply(lambda x: x.tz_convert(self.jst_timezone) if pd.notna(x) and x.tz is not None else (x.tz_localize(self.jst_timezone, ambiguous='infer') if pd.notna(x) else pd.NaT))
                 elif config['type'] == str and not config.get('replace_nan'):
                     df[col_name] = df[col_name].astype(str)
 
@@ -363,7 +365,7 @@ class QuizApp:
                 st.session_state.main_data_source_radio = "初期データ"
                 self._load_initial_data() # 初期データに戻す
             # else: # 初期データモードで何もアップロードされていない場合は何もしない
-            #     st.session_state.last_loaded_file_message = "" # メッセージをクリア
+            #       st.session_state.last_loaded_file_message = "" # メッセージをクリア
 
 
     @staticmethod
@@ -460,8 +462,8 @@ class QuizApp:
             # CSV保存時もタイムゾーンを考慮してUTCに変換し、tz情報を削除して保存
             for col in ['最終実施日時', '次回実施予定日時']:
                 if col in df_to_save.columns and pd.api.types.is_datetime64_any_dtype(df_to_save[col]):
-                    if df_to_save[col].dt.tz is not None:
-                        df_to_save[col] = df_to_save[col].dt.tz_convert('UTC').dt.tz_localize(None) # UTC変換後、tz情報を削除
+                    # NaNでない場合のみ処理
+                    df_to_save[col] = df_to_save[col].apply(lambda x: x.tz_convert('UTC').tz_localize(None) if pd.notna(x) and x.tz is not None else (x.tz_localize(None) if pd.notna(x) and x.tz is None else pd.NaT))
             
             # NaNを空文字列に変換して保存（Excelでの表示を考慮）
             df_to_save = df_to_save.fillna('')
@@ -497,7 +499,6 @@ class QuizApp:
                     st.session_state.latest_result = "不正解…💧"
 
                 # 現在の日本時間を取得し、タイムゾーン情報を付与
-                # self.jst_timezone を使用
                 current_jst_time = datetime.now(self.jst_timezone) 
 
                 st.session_state.quiz_df.loc[idx, '最終実施日時'] = current_jst_time
@@ -596,7 +597,7 @@ class QuizApp:
                     # 表示形式を整える (例: 2025-07-21 19:48:57)
                     df_display[col] = df_display[col].dt.strftime('%Y-%m-%d %H:%M:%S')
 
-            st.dataframe(df_display)
+            st.dataframe(df_display, height=500) # heightを追加
 
             @st.cache_data
             def convert_df_to_csv(df):
@@ -606,8 +607,8 @@ class QuizApp:
                 df_to_export = df.copy()
                 for col in ['最終実施日時', '次回実施予定日時']:
                     if col in df_to_export.columns and pd.api.types.is_datetime64_any_dtype(df_to_export[col]):
-                        if df_to_export[col].dt.tz is not None:
-                            df_to_export[col] = df_to_export[col].dt.tz_convert('UTC').dt.tz_localize(None)
+                        # NaNでない場合のみ処理
+                        df_to_export[col] = df_to_export[col].apply(lambda x: x.tz_convert('UTC').tz_localize(None) if pd.notna(x) and x.tz is not None else (x.tz_localize(None) if pd.notna(x) and x.tz is None else pd.NaT))
                         # フォーマットを統一してCSVに書き出す
                         df_to_export[col] = df_to_export[col].dt.strftime('%Y-%m-%d %H:%M:%S')
                 
@@ -635,9 +636,8 @@ class QuizApp:
 def main():
     quiz_app = QuizApp()
 
-    # ★★★ ここから修正 ★★★
     # アプリ起動時に一度だけロード処理を試みる
-    if st.session_state.quiz_df is None:
+    if st.session_state.quiz_df is None and not st.session_state.has_shown_initial_load_message:
         if st.session_state.data_source_selection == "初期データ":
             quiz_app._load_initial_data()
         elif st.session_state.data_source_selection == "アップロード":
@@ -648,12 +648,11 @@ def main():
                 # アップロードモードだがまだファイルが選択されていない場合
                 st.session_state.quiz_df = None # 明示的にデータなし状態にする
                 st.session_state.last_loaded_file_message = "CSVファイルをアップロードしてください。"
-    
-    # 最後にロード成功メッセージを表示（ロードが行われた場合のみ）
-    if st.session_state.last_loaded_file_message and st.session_state.quiz_df is not None:
-        st.success(st.session_state.last_loaded_file_message)
-        st.session_state.last_loaded_file_message = "" # 表示したらクリア
-
+        # 初回ロードメッセージの表示制御
+        if st.session_state.last_loaded_file_message:
+            st.session_state.has_shown_initial_load_message = True
+            st.success(st.session_state.last_loaded_file_message)
+            st.session_state.last_loaded_file_message = "" # 表示したらクリア
 
     st.sidebar.header("📚 データソース")
     data_source_options_radio = ["初期データ", "アップロード"]
@@ -661,6 +660,7 @@ def main():
     def on_data_source_change():
         """サイドバーのラジオボタン変更時のコールバック"""
         st.session_state.data_source_selection = st.session_state.main_data_source_radio
+        st.session_state.has_shown_initial_load_message = False # データソース切り替え時はメッセージを再表示可能にする
         if st.session_state.data_source_selection == "初期データ":
             quiz_app._load_initial_data()
             # 初期データ選択時はアップロード関連のセッション状態をクリア
@@ -672,9 +672,9 @@ def main():
                 # 既にアップロード済みのデータがあればそれをロード
                 quiz_app._load_uploaded_data()
             else:
-                 # まだファイルがアップロードされていない場合
-                 st.session_state.quiz_df = None # データがない状態にする
-                 st.session_state.last_loaded_file_message = "CSVファイルをアップロードしてください。"
+                # まだファイルがアップロードされていない場合
+                st.session_state.quiz_df = None # データがない状態にする
+                st.session_state.last_loaded_file_message = "CSVファイルをアップロードしてください。"
         st.rerun() # 変更を反映させるために再実行
 
     selected_source_radio = st.sidebar.radio(
@@ -694,112 +694,165 @@ def main():
     )
 
     # uploaded_fileが選択されたら処理
-    if uploaded_file is not None:
-        quiz_app.handle_upload_logic(uploaded_file)
-        # handle_upload_logicがメッセージをst.session_state.last_loaded_file_messageに設定するので、
-        # ここでは再描画のみトリガー。メッセージ表示はmain関数の上部で一括管理。
-        # st.rerun() # handle_upload_logic内でセッション状態が変更されるので、これも不要な場合がある
-    # else: # ファイルが選択されていない場合、またはクリアされた場合
-    #     # handle_upload_logic内で処理されるため、ここでの明示的な処理は不要
+    if uploaded_file is not None and st.session_state.data_source_selection == "アップロード":
+        # Streamlitのファイルアップローダーはファイル選択時だけでなく、
+        # アプリケーションが再実行されるたびにファイルオブジェクトを返すため、
+        # content_changedのチェックで不要な再ロードを避ける
+        if (st.session_state.uploaded_file_name != uploaded_file.name or
+            st.session_state.uploaded_file_size != uploaded_file.size):
+            quiz_app.handle_upload_logic(uploaded_file)
+            st.rerun() # 新しいファイルがアップロードされたら再実行
+    elif uploaded_file is None and st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is not None:
+        # アップロードモードで、以前ファイルがあったが、ファイルアップローダーがクリアされた場合
+        # （ファイルの選択を解除した場合など）
+        quiz_app.handle_upload_logic(uploaded_file) # アップロードデータのリセット処理
+        st.rerun()
 
-    # main関数の最後に、ロード成功メッセージを再度チェックして表示
-    # ※ Streamlitの実行サイクル上、これが最も確実に一度だけ表示される場所になる可能性が高い
-    if st.session_state.last_loaded_file_message and st.session_state.quiz_df is not None:
-        if "has_shown_initial_load_message" not in st.session_state:
-            st.session_state.has_shown_initial_load_message = False
-        
-        # 起動時に一度だけ表示されるように制御
-        if not st.session_state.has_shown_initial_load_message:
-            st.success(st.session_state.last_loaded_file_message)
-            st.session_state.last_loaded_file_message = "" # 表示したらクリア
-            st.session_state.has_shown_initial_load_message = True
-        elif st.session_state.last_loaded_file_message: # それ以降の明示的な変更があった場合
-             st.success(st.session_state.last_loaded_file_message)
-             st.session_state.last_loaded_file_message = ""
+    # データソース切り替え時のメッセージ表示は on_data_source_change で行うため、ここでの重複表示は削除。
 
-    # ★★★ ここまで修正 ★★★
+    st.title("情報処理試験対策クイズ")
 
     tab1, tab2 = st.tabs(["クイズ", "データビューア"])
 
+    # サイドバーの残りの部分
     with st.sidebar:
         st.header("🎯 クイズモード")
         quiz_modes = ["未回答", "苦手", "復習"]
-        st.session_state.quiz_mode = st.radio(
-            "",
-            quiz_modes,
-            index=quiz_modes.index(st.session_state.quiz_mode) if st.session_state.quiz_mode in quiz_modes else 0,
+        current_quiz_mode_index = quiz_modes.index(st.session_state.quiz_mode) if st.session_state.quiz_mode in quiz_modes else 0
+        
+        selected_quiz_mode = st.radio(
+            "**モードを選択**",
+            options=quiz_modes,
+            index=current_quiz_mode_index,
             key="quiz_mode_radio",
-            label_visibility="hidden"
+            on_change=lambda: quiz_app._reset_quiz_state_only() # モード変更時にクイズ状態をリセット
         )
+        st.session_state.quiz_mode = selected_quiz_mode
 
-        st.header("クイズの絞り込み")
+
+        # フィルターオプション
+        st.header("🔍 フィルター")
+        if st.session_state.quiz_df is not None:
+            categories = ["すべて"] + st.session_state.quiz_df["カテゴリ"].unique().tolist()
+            fields = ["すべて"] + st.session_state.quiz_df["分野"].unique().tolist()
+            levels = ["すべて"] + st.session_state.quiz_df["シラバス改定有無"].unique().tolist()
+        else:
+            categories = ["すべて"]
+            fields = ["すべて"]
+            levels = ["すべて"]
+
+        selected_category = st.selectbox(
+            "カテゴリで絞り込み",
+            options=categories,
+            index=categories.index(st.session_state.filter_category) if st.session_state.filter_category in categories else 0,
+            key="filter_category_select",
+            on_change=lambda: quiz_app._reset_quiz_state_only() # フィルター変更時にクイズ状態をリセット
+        )
+        st.session_state.filter_category = selected_category
+
+        selected_field = st.selectbox(
+            "分野で絞り込み",
+            options=fields,
+            index=fields.index(st.session_state.filter_field) if st.session_state.filter_field in fields else 0,
+            key="filter_field_select",
+            on_change=lambda: quiz_app._reset_quiz_state_only() # フィルター変更時にクイズ状態をリセット
+        )
+        st.session_state.filter_field = selected_field
+
+        selected_level = st.selectbox(
+            "シラバス改定有無で絞り込み",
+            options=levels,
+            index=levels.index(st.session_state.filter_level) if st.session_state.filter_level in levels else 0,
+            key="filter_level_select",
+            on_change=lambda: quiz_app._reset_quiz_state_only() # フィルター変更時にクイズ状態をリセット
+        )
+        st.session_state.filter_level = selected_level
+        
+        # 統計情報の表示
+        st.header("📊 クイズ進捗")
+        if st.session_state.quiz_df is not None:
+            df_filtered_for_stats = quiz_app._apply_filters(st.session_state.quiz_df)
+            total_filtered = len(df_filtered_for_stats)
+            answered_filtered = len(df_filtered_for_stats[df_filtered_for_stats["〇×結果"] != ''])
+            unanswered_filtered = len(df_filtered_for_stats[df_filtered_for_stats["〇×結果"] == ''])
+            correct_filtered = df_filtered_for_stats["正解回数"].sum()
+            incorrect_filtered = df_filtered_for_stats["不正解回数"].sum()
+
+            col_label, col_value = st.columns([1, 2])
+            with col_label:
+                st.markdown("<div class='metric-label'>対象単語数</div>", unsafe_allow_html=True)
+            with col_value:
+                st.markdown(f"<div class='metric-value'>{total_filtered}</div>", unsafe_allow_html=True)
+
+            col_label, col_value = st.columns([1, 2])
+            with col_label:
+                st.markdown("<div class='metric-label'>回答済み</div>", unsafe_allow_html=True)
+            with col_value:
+                st.markdown(f"<div class='metric-value'>{answered_filtered}</div>", unsafe_allow_html=True)
+
+            col_label, col_value = st.columns([1, 2])
+            with col_label:
+                st.markdown("<div class='metric-label'>未回答</div>", unsafe_allow_html=True)
+            with col_value:
+                st.markdown(f"<div class='metric-value'>{unanswered_filtered}</div>", unsafe_allow_html=True)
+
+            col_label, col_value = st.columns([1, 2])
+            with col_label:
+                st.markdown("<div class='metric-label'>正解数</div>", unsafe_allow_html=True)
+            with col_value:
+                st.markdown(f"<div class='metric-value'>{correct_filtered}</div>", unsafe_allow_html=True)
+
+            col_label, col_value = st.columns([1, 2])
+            with col_label:
+                st.markdown("<div class='metric-label'>不正解数</div>", unsafe_allow_html=True)
+            with col_value:
+                st.markdown(f"<div class='metric-value'>{incorrect_filtered}</div>", unsafe_allow_html=True)
+        else:
+            st.info("データをロードすると進捗が表示されます。")
+
+
+        st.markdown("---") # 区切り線
+        st.header("⚙️ オプション")
+        if st.session_state.quiz_df is not None:
+            if st.button("未回答単語のリセット", key="reset_unanswered_btn"):
+                st.session_state.quiz_df["〇×結果"] = ''
+                st.session_state.quiz_df["最終実施日時"] = pd.NaT # 日付もリセット
+                quiz_app._reset_quiz_state_only()
+                quiz_app._save_quiz_data_to_csv()
+                st.success("未回答単語の状態がリセットされました。")
+                st.rerun()
+
+            if st.button("全単語の学習履歴をリセット", key="reset_all_history_btn"):
+                st.session_state.quiz_df["〇×結果"] = ''
+                st.session_state.quiz_df["正解回数"] = 0
+                st.session_state.quiz_df["不正解回数"] = 0
+                st.session_state.quiz_df["最終実施日時"] = pd.NaT
+                st.session_state.quiz_df["次回実施予定日時"] = pd.NaT
+                quiz_app._reset_quiz_state_only()
+                quiz_app._save_quiz_data_to_csv()
+                st.success("全単語の学習履歴がリセットされました。")
+                st.rerun()
+
+        st.checkbox("デバッグモード", key="debug_mode", value=st.session_state.debug_mode,
+                    help="開発者向けのデバッグ情報を表示します。")
+        if st.session_state.debug_mode:
+            st.info(f"DEBUG: 現在のデータファイル: {st.session_state.current_data_file}")
+
+
+    # メインタブのコンテンツ
+    if st.session_state.quiz_df is not None:
+        df_filtered = quiz_app._apply_filters(st.session_state.quiz_df)
+        remaining_df = df_filtered[df_filtered["〇×結果"] == '']
+    else:
         df_filtered = pd.DataFrame()
         remaining_df = pd.DataFrame()
 
-        if st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
-            df_base_for_filters = st.session_state.quiz_df.copy()
-            categories = ["すべて"] + df_base_for_filters["カテゴリ"].dropna().unique().tolist()
-            st.session_state.filter_category = st.selectbox(
-                "カテゴリで絞り込み", categories,
-                index=categories.index(st.session_state.filter_category) if st.session_state.filter_category in categories else 0,
-                key="filter_category_selectbox"
-            )
-
-            fields = ["すべて"] + df_base_for_filters["分野"].dropna().unique().tolist()
-            st.session_state.filter_field = st.selectbox(
-                "分野で絞り込み", fields,
-                index=fields.index(st.session_state.filter_field) if st.session_state.filter_field in fields else 0,
-                key="filter_field_selectbox"
-            )
-
-            valid_syllabus_changes = df_base_for_filters["シラバス改定有無"].astype(str).str.strip().replace('', pd.NA).dropna().unique().tolist()
-            syllabus_change_options = ["すべて"] + sorted(valid_syllabus_changes)
-
-            st.session_state.filter_level = st.selectbox(
-                "🔄 シラバス改定有無で絞り込み",
-                syllabus_change_options,
-                index=syllabus_change_options.index(st.session_state.filter_level) if st.session_state.filter_level in syllabus_change_options else 0,
-                key="filter_level_selectbox"
-            )
-
-            df_filtered = QuizApp._apply_filters(st.session_state.quiz_df)
-            remaining_df = df_filtered[df_filtered["〇×結果"] == '']
-        else:
-            st.info("データがロードされていません。")
-
-        st.markdown("---")
-        st.subheader("📊 クイズ進捗")
-        filtered_count = len(df_filtered)
-
-        st.markdown(f"<div class='metric-container'><span class='metric-label'>正解：</span><span class='metric-value'>{st.session_state.correct}</span></div>", unsafe_allow_html=True)
-        st.markdown(f"<div class='metric-container'><span class='metric-label'>回答：</span><span class='metric-value'>{st.session_state.total}</span></div>", unsafe_allow_html=True)
-        st.markdown(f"<div class='metric-container'><span class='metric-label'>未回答：</span><span class='metric-value'>{len(remaining_df)}</span></div>", unsafe_allow_html=True)
-        st.markdown(f"<div class='metric-container'><span class='metric-label'>対象：</span><span class='metric-value'>{filtered_count}</span></div>", unsafe_allow_html=True)
-
-        st.markdown("---")
-        st.subheader("開発者ツール")
-        st.session_state.debug_mode = st.checkbox(
-            "デバッグモードを有効にする",
-            value=st.session_state.debug_mode,
-            key="debug_mode_checkbox"
-        )
-
     with tab1:
-        st.header("情報処理試験対策クイズ")
         quiz_app.display_quiz(df_filtered, remaining_df)
 
     with tab2:
-        st.header("登録データ一覧")
+        st.header("登録単語データ一覧")
         quiz_app.display_data_viewer()
 
-    st.markdown("---")
-    st.markdown("""
-    <div style="text-align: center; margin-top: 20px; font-size: 0.8em; color: #666;">
-        <p>Powered by Streamlit and Gemini</p>
-        <p>© 2024 Your Company Name or Your Name. All rights reserved.</p>
-    </div>
-    """, unsafe_allow_html=True)
-
 if __name__ == "__main__":
-    print(f"DEBUG: Current working directory: {os.getcwd()}", file=sys.stderr)
     main()
