@@ -38,7 +38,8 @@ defaults = {
     "debug_mode": False,
     "quiz_mode": "復習",
     "main_data_source_radio": "初期データ",
-    "current_data_file": "tango.csv"
+    "current_data_file": "tango.csv",
+    "last_loaded_file_message": "" # 新しいセッション状態：最後にロードされたファイルメッセージ
 }
 
 for key, val in defaults.items():
@@ -201,8 +202,10 @@ class QuizApp:
         st.session_state.quiz_choice_index = 0
         st.session_state.answered_words = set()
 
-    def _load_data_from_file(self, file_path):
-        """指定されたファイルパスからデータをロードし、quiz_dfを更新する"""
+    def _load_data_from_file(self, file_path, is_initial_load=False):
+        """指定されたファイルパスからデータをロードし、quiz_dfを更新する。成功可否を返す。
+        メッセージ表示は呼び出し元で行う。
+        """
         try:
             # UTF-8で読み込みを試行し、エラー時には Shift-JIS (CP932) で再試行
             try:
@@ -211,30 +214,67 @@ class QuizApp:
                 df = pd.read_csv(file_path, encoding='cp932') # Shift-JISのPythonエンコーディング名
 
             st.session_state.quiz_df = self._process_df_types(df)
-            # ロード成功メッセージは呼び出し元で表示
-            self._reset_quiz_state_only()
-            st.session_state.current_data_file = file_path
+            st.session_state.current_data_file = file_path # ファイル名をセッション状態に保存
+
+            # 初回ロード時以外はクイズ状態をリセット
+            # 初回ロード時は、フィルタや現在のクイズ状態を維持したい場合があるので
+            # ここではreset_quiz_state_onlyを呼ばない。
+            # main()関数の初期ロード部分で適切なタイミングでreset_quiz_state_onlyが呼ばれる
+            if not is_initial_load:
+                self._reset_quiz_state_only()
+
             return True # ロード成功
         except FileNotFoundError:
-            st.error(f"エラー: データファイル '{file_path}' が見つかりません。")
             st.session_state.quiz_df = None
-            return False
+            return False # ロード失敗
         except Exception as e:
             st.error(f"データファイル '{file_path}' のロード中にエラーが発生しました: {e}")
             st.session_state.quiz_df = None
-            return False
+            return False # ロード失敗
 
     def _load_initial_data(self):
+        """初期データまたは既存の結果データをロードする。メッセージはここで表示。"""
         initial_results_file = "tango_results.csv"
+        # 既存の結果ファイルがあればそれを優先的にロード
         if os.path.exists(initial_results_file):
-            if self._load_data_from_file(initial_results_file):
-                st.success(f"'{initial_results_file}' (結果ファイル) をロードしました！")
+            if self._load_data_from_file(initial_results_file, is_initial_load=True):
+                st.session_state.last_loaded_file_message = f"'{initial_results_file}' (結果ファイル) をロードしました！"
                 st.session_state.data_source_selection = "初期データ"
                 st.session_state.main_data_source_radio = "初期データ"
         else:
-            if self._load_data_from_file("tango.csv"):
-                st.success(f"初期データ 'tango.csv' をロードしました！")
+            # 結果ファイルがなければ元の初期データをロード
+            if self._load_data_from_file("tango.csv", is_initial_load=True):
+                st.session_state.last_loaded_file_message = f"初期データ 'tango.csv' をロードしました！"
 
+    def _load_uploaded_data(self):
+        """アップロードされたデータまたはその結果ファイルをロードする。メッセージはここで表示。"""
+        if st.session_state.uploaded_df_temp is not None:
+            uploaded_file_base_name = os.path.splitext(st.session_state.uploaded_file_name)[0]
+            uploaded_results_file_name = f"{uploaded_file_base_name}_results.csv"
+            
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            uploaded_results_file_path = os.path.join(script_dir, uploaded_results_file_name)
+
+            # アップロードされたファイルの対応する結果ファイルがあればロード
+            if os.path.exists(uploaded_results_file_path):
+                if self._load_data_from_file(uploaded_results_file_path, is_initial_load=True):
+                    st.session_state.last_loaded_file_message = f"'{uploaded_results_file_name}' (既存の結果ファイル) をロードしました！"
+                    st.session_state.data_source_selection = "アップロード"
+                    st.session_state.main_data_source_radio = "アップロード"
+            else:
+                # 結果ファイルがなければ、アップロードされた元のファイルを直接ロード
+                st.session_state.quiz_df = self._process_df_types(st.session_state.uploaded_df_temp.copy())
+                self._reset_quiz_state_only() # ここは必要なので残す
+                st.session_state.last_loaded_file_message = f"'{st.session_state.uploaded_file_name}' をロードしました！"
+                st.session_state.data_source_selection = "アップロード"
+                st.session_state.main_data_source_radio = "アップロード"
+                st.session_state.current_data_file = st.session_state.uploaded_file_name # こちらも更新
+        else:
+            # アップロードデータがない場合
+            st.session_state.last_loaded_file_message = "アップロードされたデータが見つかりません。"
+            st.session_state.quiz_df = None # データがない状態にする
+            st.session_state.data_source_selection = "初期データ" # データなしの場合初期データ選択に戻す
+            st.session_state.main_data_source_radio = "初期データ"
 
     def _process_df_types(self, df: pd.DataFrame) -> pd.DataFrame:
         """データフレームの列の型を適切に処理する"""
@@ -271,16 +311,16 @@ class QuizApp:
         return df
 
     def handle_upload_logic(self, uploaded_file):
-        """ファイルアップロード時のロジック。重複メッセージを抑制。"""
+        """ファイルアップロード時のロジック。メッセージはここで設定し、main関数で表示。"""
         if uploaded_file is not None:
             # ファイルが変更されたか、または初回アップロードかを判断
-            is_new_upload = (
+            is_new_upload_or_content_changed = (
                 st.session_state.uploaded_file_name != uploaded_file.name or
                 st.session_state.uploaded_file_size != uploaded_file.size or
-                st.session_state.uploaded_df_temp is None
+                st.session_state.uploaded_df_temp is None # テンポラリデータがない場合も新規とみなす
             )
 
-            if is_new_upload:
+            if is_new_upload_or_content_changed:
                 try:
                     uploaded_df_raw = uploaded_file.getvalue().decode('utf-8')
                     uploaded_df = pd.read_csv(io.StringIO(uploaded_df_raw))
@@ -290,38 +330,41 @@ class QuizApp:
                     st.session_state.uploaded_file_size = uploaded_file.size
 
                     uploaded_results_file_name = f"{os.path.splitext(uploaded_file.name)[0]}_results.csv"
-                    # フルパスを生成してファイルが存在するかチェック
                     script_dir = os.path.dirname(os.path.abspath(__file__))
                     uploaded_results_file_path = os.path.join(script_dir, uploaded_results_file_name)
 
                     if os.path.exists(uploaded_results_file_path):
-                        # 結果ファイルが存在する場合、そのファイルをロード
                         if self._load_data_from_file(uploaded_results_file_path):
-                            st.success(f"'{uploaded_results_file_name}' (既存の結果ファイル) をロードしました！")
+                            st.session_state.last_loaded_file_message = f"'{uploaded_results_file_name}' (既存の結果ファイル) をロードしました！"
+                            st.session_state.data_source_selection = "アップロード"
+                            st.session_state.main_data_source_radio = "アップロード"
                     else:
-                        # 結果ファイルが存在しない場合、アップロードされた元のファイルをロード
                         st.session_state.quiz_df = self._process_df_types(uploaded_df.copy())
-                        st.success(f"'{uploaded_file.name}' をロードしました！")
                         self._reset_quiz_state_only()
-
-                    st.session_state.data_source_selection = "アップロード"
-                    # 現在のデータファイル名を適切に設定
-                    st.session_state.current_data_file = uploaded_results_file_name if os.path.exists(uploaded_results_file_path) else uploaded_file.name
+                        st.session_state.last_loaded_file_message = f"'{uploaded_file.name}' をロードしました！"
+                        st.session_state.data_source_selection = "アップロード"
+                        st.session_state.main_data_source_radio = "アップロード"
+                        st.session_state.current_data_file = uploaded_file.name
 
                 except Exception as e:
                     st.error(f"ファイルの読み込み中にエラーが発生しました: {e}")
                     st.session_state.uploaded_df_temp = None
                     st.session_state.uploaded_file_name = None
                     st.session_state.uploaded_file_size = None
+                    st.session_state.last_loaded_file_message = "ファイルの読み込み中にエラーが発生しました。"
             # else: # 同一ファイルが再アップロードされた場合は、何もしない（メッセージも出さない）
         else:
             # アップロードファイルがなくなった場合（例えば、ファイル選択がクリアされた場合）
             st.session_state.uploaded_df_temp = None
             st.session_state.uploaded_file_name = None
             st.session_state.uploaded_file_size = None
-            if st.session_state.data_source_selection == "アップロード":
+            if st.session_state.data_source_selection == "アップロード": # アップロードモードからクリアされた場合
                 st.session_state.data_source_selection = "初期データ"
+                st.session_state.main_data_source_radio = "初期データ"
                 self._load_initial_data() # 初期データに戻す
+            # else: # 初期データモードで何もアップロードされていない場合は何もしない
+            #     st.session_state.last_loaded_file_message = "" # メッセージをクリア
+
 
     @staticmethod
     def _apply_filters(df: pd.DataFrame) -> pd.DataFrame:
@@ -592,18 +635,31 @@ class QuizApp:
 def main():
     quiz_app = QuizApp()
 
-    # 初期ロードロジック
+    # ★★★ ここから修正 ★★★
+    # アプリ起動時に一度だけロード処理を試みる
     if st.session_state.quiz_df is None:
         if st.session_state.data_source_selection == "初期データ":
             quiz_app._load_initial_data()
-        elif st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is not None:
-            quiz_app._load_uploaded_data()
-        # else: st.info("アップロードされたデータがありません。") は呼び出し元のdisplay_quizで対処
+        elif st.session_state.data_source_selection == "アップロード":
+            # アップロードデータが存在するか確認してからロードを試みる
+            if st.session_state.uploaded_df_temp is not None:
+                quiz_app._load_uploaded_data()
+            else:
+                # アップロードモードだがまだファイルが選択されていない場合
+                st.session_state.quiz_df = None # 明示的にデータなし状態にする
+                st.session_state.last_loaded_file_message = "CSVファイルをアップロードしてください。"
+    
+    # 最後にロード成功メッセージを表示（ロードが行われた場合のみ）
+    if st.session_state.last_loaded_file_message and st.session_state.quiz_df is not None:
+        st.success(st.session_state.last_loaded_file_message)
+        st.session_state.last_loaded_file_message = "" # 表示したらクリア
+
 
     st.sidebar.header("📚 データソース")
     data_source_options_radio = ["初期データ", "アップロード"]
 
     def on_data_source_change():
+        """サイドバーのラジオボタン変更時のコールバック"""
         st.session_state.data_source_selection = st.session_state.main_data_source_radio
         if st.session_state.data_source_selection == "初期データ":
             quiz_app._load_initial_data()
@@ -613,11 +669,13 @@ def main():
             st.session_state.uploaded_file_size = None
         else: # アップロードが選択された場合
             if st.session_state.uploaded_df_temp is not None:
-                quiz_app._load_uploaded_data() # 既にアップロード済みのデータをロード
+                # 既にアップロード済みのデータがあればそれをロード
+                quiz_app._load_uploaded_data()
             else:
-                 # ここでは具体的なロードは行わず、ファイルアップローダーの表示を促す
-                 st.info("CSVファイルをアップロードしてください。")
+                 # まだファイルがアップロードされていない場合
                  st.session_state.quiz_df = None # データがない状態にする
+                 st.session_state.last_loaded_file_message = "CSVファイルをアップロードしてください。"
+        st.rerun() # 変更を反映させるために再実行
 
     selected_source_radio = st.sidebar.radio(
         "**データソースを選択**",
@@ -638,8 +696,28 @@ def main():
     # uploaded_fileが選択されたら処理
     if uploaded_file is not None:
         quiz_app.handle_upload_logic(uploaded_file)
+        # handle_upload_logicがメッセージをst.session_state.last_loaded_file_messageに設定するので、
+        # ここでは再描画のみトリガー。メッセージ表示はmain関数の上部で一括管理。
+        # st.rerun() # handle_upload_logic内でセッション状態が変更されるので、これも不要な場合がある
     # else: # ファイルが選択されていない場合、またはクリアされた場合
     #     # handle_upload_logic内で処理されるため、ここでの明示的な処理は不要
+
+    # main関数の最後に、ロード成功メッセージを再度チェックして表示
+    # ※ Streamlitの実行サイクル上、これが最も確実に一度だけ表示される場所になる可能性が高い
+    if st.session_state.last_loaded_file_message and st.session_state.quiz_df is not None:
+        if "has_shown_initial_load_message" not in st.session_state:
+            st.session_state.has_shown_initial_load_message = False
+        
+        # 起動時に一度だけ表示されるように制御
+        if not st.session_state.has_shown_initial_load_message:
+            st.success(st.session_state.last_loaded_file_message)
+            st.session_state.last_loaded_file_message = "" # 表示したらクリア
+            st.session_state.has_shown_initial_load_message = True
+        elif st.session_state.last_loaded_file_message: # それ以降の明示的な変更があった場合
+             st.success(st.session_state.last_loaded_file_message)
+             st.session_state.last_loaded_file_message = ""
+
+    # ★★★ ここまで修正 ★★★
 
     tab1, tab2 = st.tabs(["クイズ", "データビューア"])
 
