@@ -155,6 +155,11 @@ st.markdown("""
         padding-top: 2rem;
         padding-bottom: 2rem;
     }
+    /* --- 追加/修正されたCSS (st.radioのラベルを完全に非表示にする) --- */
+    div[data-testid="stRadio"] > label[data-testid="stWidgetLabel"] {
+        display: none !important;
+    }
+    /* --- ここまで追加/修正されたCSS --- */
 </style>
 """, unsafe_allow_html=True)
 
@@ -581,13 +586,15 @@ def main():
     with tab1:
         st.header("情報処理試験対策クイズ")
         
-        # クイズモードの選択 (ヘッダーを削除し、ラジオボタンのラベルに設定)
+        # クイズモードの選択
+        st.sidebar.header("🎯 クイズモード") # このヘッダーは残します
         quiz_modes = ["復習", "未回答", "苦手"]
         st.session_state.quiz_mode = st.sidebar.radio(
-            "**🎯 クイズモードを選択**", # <-- ここでヘッダーとラベルを統合
+            "", # <-- ラベルテキストを空に
             quiz_modes, 
             index=quiz_modes.index(st.session_state.quiz_mode) if st.session_state.quiz_mode in quiz_modes else 0,
-            key="quiz_mode_radio"
+            key="quiz_mode_radio",
+            label_visibility="hidden" # <-- これでラベルを完全に非表示にする
         )
 
         st.sidebar.header("クイズの絞り込み") 
