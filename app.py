@@ -4,7 +4,7 @@ import random
 import os
 import datetime
 
-# QuizAppクラスの定義
+# --- QuizAppクラスの完全な定義 ---
 class QuizApp:
     def __init__(self, original_df: pd.DataFrame):
         self.kana_labels = ["ア", "イ", "ウ", "エ", "オ"]
@@ -38,8 +38,10 @@ class QuizApp:
             if st.session_state.data_source_selection == "初期データ":
                 self._initialize_quiz_df_from_original()
             elif st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is None:
+                # アップロードが選択されているが、まだファイルがアップロードされていない場合、初期データを表示
                 self._initialize_quiz_df_from_original() 
             elif st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is not None:
+                # アップロード済みデータがあればそれを設定
                 st.session_state.quiz_df = st.session_state.uploaded_df_temp.copy()
                 st.session_state.answered_words = set(st.session_state.quiz_df[
                     (st.session_state.quiz_df['正解回数'] > 0) | (st.session_state.quiz_df['不正解回数'] > 0)
@@ -67,14 +69,13 @@ class QuizApp:
         if '使用理由／文脈' not in df.columns: df['使用理由／文脈'] = ''
         if '試験区分' not in df.columns: df['試験区分'] = ''
         
-        # 💡 修正点: ここでSyntaxErrorが発生していました。閉じ括弧が『になっていました
+        # 修正済み: 閉じ括弧が『になっていたのを修正
         if '出題確率（推定）' not in df.columns: df['出題確率（推定）'] = '' 
         
         if '改定の意図・影響' not in df.columns: df['改定の意図・影響'] = ''
 
         return df
 
-    # --- 以下、QuizAppクラスの他のメソッド（変更なし） ---
     def _initialize_session(self):
         """セッション状態をデフォルト値で初期化します。"""
         for key, val in self.defaults.items():
@@ -120,6 +121,9 @@ class QuizApp:
         """データフレームをフィルターし、残りの単語を返します。
         このメソッドは、サイドバーにフィルターUIを表示する役割も持ちます。
         """
+        if st.session_state.quiz_df is None or st.session_state.quiz_df.empty:
+            return pd.DataFrame(), pd.DataFrame() # 空のDataFrameを返す
+
         df = st.session_state.quiz_df.copy()
 
         categories = ["すべて"] + df["カテゴリ"].dropna().unique().tolist()
@@ -409,6 +413,7 @@ class QuizApp:
         
         if uploaded_file is not None:
             try:
+                # ファイル名とサイズが変更された場合のみ再読み込み
                 if st.session_state.uploaded_file_name != uploaded_file.name or \
                    st.session_state.get('uploaded_file_size') != uploaded_file.size: 
                     
@@ -429,8 +434,10 @@ class QuizApp:
                     st.session_state.uploaded_file_name = uploaded_file.name
                     st.session_state.uploaded_file_size = uploaded_file.size
                     st.sidebar.success(f"✅ ファイル '{uploaded_file.name}' を一時的に読み込みました。")
+                    
+                    # データソースをアップロードに設定し、再実行して quiz_df に反映させる
                     st.session_state.data_source_selection = "アップロード"
-                    st.rerun()
+                    st.rerun() 
             except Exception as e:
                 st.sidebar.error(f"CSVファイルの読み込み中にエラーが発生しました。ファイル形式が正しいか確認してください: {e}")
                 st.session_state.uploaded_df_temp = None
@@ -440,6 +447,7 @@ class QuizApp:
 
 # --- QuizAppクラスの定義ここまで ---
 
+# --- main関数の定義 ---
 def main():
     st.set_page_config(layout="wide", page_title="IT用語クイズアプリ", page_icon="📝")
 
@@ -472,6 +480,7 @@ def main():
     if selected_source_radio != st.session_state.data_source_selection:
         st.session_state.data_source_selection = selected_source_radio
         
+        # データソースが切り替わった場合、セッション状態を初期化
         if st.session_state.data_source_selection == "初期データ":
             quiz_app._initialize_quiz_df_from_original()
             st.sidebar.success("✅ 初期データに切り替えました。")
@@ -479,6 +488,7 @@ def main():
             st.session_state.uploaded_file_name = None
             st.session_state.uploaded_file_size = None
         else: # "アップロード"が選択された場合
+            # アップロード済みのデータがあればそれを使用、なければ初期データで一旦表示
             if st.session_state.uploaded_df_temp is not None:
                 st.session_state.quiz_df = st.session_state.uploaded_df_temp.copy()
                 st.session_state.answered_words = set(st.session_state.quiz_df[
@@ -487,18 +497,21 @@ def main():
                 st.sidebar.success(f"✅ アップロードされたデータ ({st.session_state.uploaded_file_name}) を適用しました。")
             else:
                 st.sidebar.info("ファイルをアップロードしてください。")
-                quiz_app._initialize_quiz_df_from_original() 
+                quiz_app._initialize_quiz_df_from_original() # アップロード待機中は初期データで表示
         
+        # フィルターやクイズの状態をリセット（データソース切り替え時のみ）
         for key in ["total", "correct", "latest_result", "latest_correct_description",
                     "current_quiz", "quiz_answered", "quiz_choice_index",
                     "filter_category", "filter_field", "filter_level"]:
             if key in quiz_app.defaults:
-                st.session_state[key] = val if not isinstance(val, set) else set() # ここも修正が必要でした
+                # 💡 修正点: val ではなく quiz_app.defaults[key] を使用
+                st.session_state[key] = quiz_app.defaults[key] if not isinstance(quiz_app.defaults[key], set) else set()
         
-        st.rerun()
+        st.rerun() # データソース切り替え時は再実行
 
     st.sidebar.markdown("---")
 
+    # アップロード選択時にのみアップローダーを表示
     if st.session_state.data_source_selection == "アップロード":
         quiz_app.upload_data() 
     
@@ -515,32 +528,43 @@ def main():
     
     df_filtered = pd.DataFrame()
     remaining_df = pd.DataFrame()
+    
+    # quiz_dfがロードされていることを確認してからフィルター処理を行う
     if st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
         df_filtered, remaining_df = quiz_app.filter_data()
     else:
-        st.sidebar.warning("有効な学習データがロードされていません。")
+        # quiz_dfが空の場合は、アップロード待ちの状態か、tango.csvが見つからない状態
+        if st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is None:
+            st.sidebar.info("CSVファイルをアップロードしてください。")
+        else:
+            st.sidebar.warning("有効な学習データがロードされていません。")
 
+    # クイズ開始ボタンの表示ロジック
     if st.session_state.current_quiz is None: 
         if not df_filtered.empty and len(remaining_df) > 0:
             button_key = "sidebar_start_quiz_button_initial" if st.session_state.data_source_selection == "初期データ" else "sidebar_start_quiz_button_uploaded"
             if st.sidebar.button("▶️ **クイズ開始**", key=button_key):
+                # ボタンクリック時にクイズをロード
                 quiz_app.load_quiz(df_filtered, remaining_df)
                 st.rerun()
         elif len(df_filtered) > 0 and len(remaining_df) == 0:
              st.sidebar.info("現在のフィルター条件のすべての問題に回答しました。")
+        elif len(df_filtered) == 0: # フィルター後の単語が一つもない場合
+             st.sidebar.info("現在のフィルター条件に一致する単語がありません。フィルターを変更してください。")
 
     st.sidebar.markdown("---")
 
     quiz_app.show_progress(df_filtered)
 
-    if st.session_state.quiz_df.empty:
+    # メインコンテンツエリアの表示ロジック
+    if st.session_state.quiz_df is None or st.session_state.quiz_df.empty:
         st.info("クイズを開始するには、まず有効な学習データをロードしてください。")
     elif st.session_state.current_quiz is None:
         if len(df_filtered) > 0 and len(remaining_df) > 0:
             st.info("データがロードされました！サイドバーの「クイズ開始」ボタンをクリックしてください。")
         elif len(df_filtered) > 0 and len(remaining_df) == 0:
             quiz_app.show_completion()
-        else:
+        else: # len(df_filtered) == 0 のケース
             st.info("現在のフィルター条件に一致する単語がないか、データがありません。フィルターを変更するか、新しいデータをアップロードしてください。")
     else:
         quiz_app.display_quiz(df_filtered, remaining_df)
@@ -549,5 +573,6 @@ def main():
     if st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
         quiz_app.display_statistics()
 
+# --- main関数の実行ブロック ---
 if __name__ == "__main__":
     main()
