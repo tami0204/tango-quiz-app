@@ -73,7 +73,7 @@ st.markdown("""
         font-size: 1.75em;
     }
     p { /* 説明文などの標準的な段落のフォントサイズ */
-        font-size: 0.95em; 
+        font-size: 0.95em;
     }
     /* 選択肢ボタンのスタイル */
     .stRadio > label > div {
@@ -191,7 +191,7 @@ st.markdown("""
 class QuizApp:
     def __init__(self):
         # セッション状態の初期化は、アプリの先頭で行うため、ここでは何もしない
-        pass 
+        pass
 
     def _reset_quiz_state_only(self):
         """クイズの進行に関するセッションステートのみをリセットします。"""
@@ -208,9 +208,9 @@ class QuizApp:
         """指定されたファイルパスからデータをロードします。"""
         try:
             # CSV読み込み時のエンコーディング指定
-            # あなたのCSVファイルがShift-JISの場合、下の行をコメントアウトして、
-            # 次の行のコメントを解除してください。
+            # データビューアで問題なく表示されている場合、通常は UTF-8 でOK
             df = pd.read_csv(file_path, encoding='utf-8')
+            # もし元のCSVがShift-JISなどで保存されている場合は、以下を試す
             # df = pd.read_csv(file_path, encoding='cp932') # Shift-JIS (Windows-specific)
 
             st.session_state.quiz_df = self._process_df_types(df)
@@ -257,7 +257,7 @@ class QuizApp:
 
     def _process_df_types(self, df: pd.DataFrame) -> pd.DataFrame:
         """DataFrameに対して、必要なカラムの型変換と初期化を適用します。"""
-        
+
         # 列の型とデフォルト値/処理を定義します
         column_configs = {
             '〇×結果': {'type': str, 'default': '', 'replace_nan': True},
@@ -269,7 +269,7 @@ class QuizApp:
             '午後記述での使用例': {'type': str, 'default': ''},
             '使用理由／文脈': {'type': str, 'default': ''},
             '試験区分': {'type': str, 'default': ''},
-            '出題確率（推定）': {'type': str, 'default': ''}, 
+            '出題確率（推定）': {'type': str, 'default': ''},
             '改定の意図・影響': {'type': str, 'default': ''},
         }
 
@@ -295,20 +295,20 @@ class QuizApp:
         """
         if uploaded_file is not None:
             # 同じファイルが再アップロードされたか、ファイル名とサイズでチェック
-            if (st.session_state.uploaded_file_name != uploaded_file.name or 
+            if (st.session_state.uploaded_file_name != uploaded_file.name or
                 st.session_state.uploaded_file_size != uploaded_file.size):
-                
+
                 try:
                     # アップロードファイルの読み込み時のエンコーディング指定
-                    # あなたのCSVファイルがShift-JISの場合、下の行をコメントアウトして、
-                    # 次の行のコメントを解除してください。
+                    # データビューアで問題なく表示されている場合、通常は UTF-8 でOK
                     uploaded_df = pd.read_csv(io.StringIO(uploaded_file.getvalue().decode('utf-8')))
+                    # もし元のCSVがShift-JISなどで保存されている場合は、以下を試す
                     # uploaded_df = pd.read_csv(io.StringIO(uploaded_file.getvalue().decode('cp932'))) # Shift-JIS (Windows-specific)
 
                     st.session_state.uploaded_df_temp = uploaded_df
                     st.session_state.uploaded_file_name = uploaded_file.name
                     st.session_state.uploaded_file_size = uploaded_file.size
-                    
+
                     # アップロードされたファイルをすぐにアクティブなデータソースとして設定
                     # アップロードファイルに対応するresultsファイルがあればそれをロード
                     uploaded_results_file = f"{os.path.splitext(uploaded_file.name)[0]}_results.csv"
@@ -353,7 +353,7 @@ class QuizApp:
             filtered_df = filtered_df[filtered_df["分野"] == st.session_state.filter_field]
         if st.session_state.filter_level != "すべて":
             filtered_df = filtered_df[filtered_df["シラバス改定有無"] == st.session_state.filter_level]
-        
+
         return filtered_df
 
     def load_quiz(self, df_filtered: pd.DataFrame, remaining_df: pd.DataFrame):
@@ -584,7 +584,12 @@ class QuizApp:
             # データのエクスポート
             @st.cache_data
             def convert_df_to_csv(df):
-                return df.to_csv(index=False).encode('utf-8') # ダウンロードCSVはUTF-8で保存
+                # BOM付きUTF-8でエンコードするために StringIO を経由
+                output = io.StringIO()
+                # 'utf_8_sig' がBOM付きUTF-8エンコーディング
+                df.to_csv(output, index=False, encoding='utf_8_sig')
+                # getvalue()で文字列を取得し、それをバイト列に変換
+                return output.getvalue().encode('utf-8')
 
             csv_data = convert_df_to_csv(st.session_state.quiz_df)
 
