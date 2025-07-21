@@ -651,7 +651,7 @@ def main():
         # フィルタリングされた単語の総数を計算
         filtered_count = len(df_filtered)
 
-        # --- 件数表示のフォーマット変更 ---
+        # --- 件数表示のフォーマット変更と、固定ラベル化 ---
         st.sidebar.markdown(f"<div class='metric-container'><span class='metric-label'>正解：</span><span class='metric-value'>{st.session_state.correct}</span></div>", unsafe_allow_html=True)
         st.sidebar.markdown(f"<div class='metric-container'><span class='metric-label'>回答：</span><span class='metric-value'>{st.session_state.total}</span></div>", unsafe_allow_html=True)
         st.sidebar.markdown(f"<div class='metric-container'><span class='metric-label'>未回答：</span><span class='metric-value'>{len(remaining_df)}</span></div>", unsafe_allow_html=True)
