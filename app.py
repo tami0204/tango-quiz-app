@@ -68,8 +68,7 @@ class QuizApp:
         if '午後記述での使用例' not in df.columns: df['午後記述での使用例'] = ''
         if '使用理由／文脈' not in df.columns: df['使用理由／文脈'] = ''
         if '試験区分' not in df.columns: df['試験区分'] = ''
-        # 以下が全角クォートでSyntaxErrorになる可能性があった箇所
-        if '出題確率（推定）' not in df.columns: df['出題確率（推定）'] = '' ## 修正箇所: ここは元々正しく修正されていました
+        if '出題確率（推定）' not in df.columns: df['出題確率（推定）'] = ''
         if '改定の意図・影響' not in df.columns: df['改定の意図・影響'] = ''
 
         return df
@@ -160,7 +159,7 @@ class QuizApp:
         # 1. 不正解回数が多く、かつ回答履歴がある単語を優先的に候補に入れる
         answered_and_struggled = df_filtered[
             (df_filtered["単語"].isin(st.session_state.answered_words)) &
-            (df_filtered["不正解回数"] > df_filtered["正解回数"]) ## 修正箇所: 閉じ括弧`)`を追加
+            (df_filtered["不正解回数"] > df_filtered["正解回数"])
         ].copy()
 
         if not answered_and_struggled.empty:
@@ -203,8 +202,7 @@ class QuizApp:
         num_wrong_choices = min(3, len(other_descriptions))
         
         # 間違った選択肢をランダムに選択
-        # ログで197行目のエラーが繰り返し指摘された箇所
-        wrong_choices = random.sample(other_descriptions, num_wrong_choices) ## 修正箇所: この行が完全な形式になりました
+        wrong_choices = random.sample(other_descriptions, num_wrong_choices)
 
         choices = wrong_choices + [correct_description]
         random.shuffle(choices)
@@ -254,7 +252,7 @@ class QuizApp:
             
             # Geminiへの質問ボタン
             st.markdown(
-                f'<a href="https://www.google.com/search?q=Gemini+%E3%81%A8%E3%81%AF" target="_blank">' # Geminiの公式ページではなく、Geminiとは何かという検索結果にリンクを変更
+                f'<a href="https://www.google.com/search?q=Gemini+%E3%81%A8%E3%81%AF" target="_blank">'
                 f'<img src="https://www.gstatic.com/lamda/images/gemini_logo_lockup_eval_ja_og.svg" alt="Geminiに質問する" width="50">'
                 f'</a>',
                 unsafe_allow_html=True
@@ -281,8 +279,7 @@ class QuizApp:
         st.session_state.total += 1
         st.session_state.answered_words.add(current_quiz_data["単語"])
 
-        # 以下が`unterminated string literal`のエラーになっていた箇所
-        is_correct = (selected_option_text == current_quiz_data["説明"]) ## 修正箇所: 閉じクォートと閉じ括弧を追加
+        is_correct = (selected_option_text == current_quiz_data["説明"])
         result_mark = "〇" if is_correct else "×"
 
         st.session_state.latest_correct_description = current_quiz_data['説明']
@@ -360,10 +357,9 @@ class QuizApp:
         display_df = st.session_state.quiz_df[cols_to_display].copy()
         
         # 回答履歴のある単語のみ表示、またはすべての単語を表示するか選択肢を設けることも可能だが、今回は回答履歴のみ
-        # 以下が`[`が閉じられていないエラーになっていた箇所
         display_df = display_df[
             (display_df['正解回数'] > 0) | (display_df['不正解回数'] > 0)
-        ].sort_values(by=['不正解回数', '正解回数', '最終実施日時'], ascending=[False, False, False]) ## 修正箇所: 閉じ角括弧`]`を追加
+        ].sort_values(by=['不正解回数', '正解回数', '最終実施日時'], ascending=[False, False, False])
         
         if not display_df.empty:
             # 表示用に日時フォーマットを適用、既にNaTであれば空文字列になる
@@ -406,8 +402,7 @@ class QuizApp:
                     return
 
                 # アップロードされたDataFrameに型変換を適用し、不足する学習履歴カラムを初期化
-                # この部分も以前コードが途中で切れていた可能性があった箇所
-                processed_uploaded_df = self._process_df_types(uploaded_df.copy(deep=True)) ## 修正箇所: この行が完全な形式になりました
+                processed_uploaded_df = self._process_df_types(uploaded_df.copy(deep=True))
                 
                 st.session_state.quiz_df = processed_uploaded_df
                 
@@ -438,8 +433,8 @@ class QuizApp:
 def main():
     st.set_page_config(layout="wide", page_title="IT用語クイズアプリ", page_icon="📝")
 
-    # CSVファイルがassetsディレクトリに存在することを確認
-    csv_path = os.path.join(os.path.dirname(__file__), 'assets', 'tango.csv')
+    # CSVファイルがapp.pyと同じディレクトリに存在することを確認
+    csv_path = os.path.join(os.path.dirname(__file__), 'tango.csv') # ここを修正しました！
     if not os.path.exists(csv_path):
         st.error(f"エラー: tango.csv が見つかりません。パス: {csv_path}")
         st.stop()
