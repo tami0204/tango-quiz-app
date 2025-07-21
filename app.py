@@ -3,6 +3,8 @@ import pandas as pd
 import random
 import io
 from datetime import datetime, timedelta
+import os # osモジュールをインポート
+import sys # sysモジュールをインポート
 
 # Streamlitページの初期設定
 st.set_page_config(
@@ -36,6 +38,7 @@ defaults = {
     "debug_mode": False,
     "quiz_mode": "復習", # quiz_mode もここで初期化すること
     "main_data_source_radio": "初期データ", # ラジオボタンのキーと同期
+    "current_data_file": "tango.csv" # 現在ロードされているデータのファイルパス/名
 }
 
 for key, val in defaults.items():
@@ -201,27 +204,46 @@ class QuizApp:
         st.session_state.quiz_choice_index = 0
         st.session_state.answered_words = set()
 
-    def _load_initial_data(self):
-        """初期データをロードし、セッション状態に設定します。"""
+    def _load_data_from_file(self, file_path):
+        """指定されたファイルパスからデータをロードします。"""
         try:
-            # CSVファイルを直接読み込む (エンコーディング指定)
-            df = pd.read_csv("tango.csv", encoding='utf-8')
+            df = pd.read_csv(file_path, encoding='utf-8')
             st.session_state.quiz_df = self._process_df_types(df)
-            st.success("初期データをロードしました！")
+            st.success(f"'{file_path}' からデータをロードしました！")
             self._reset_quiz_state_only()
+            st.session_state.current_data_file = file_path # 現在ロードされているファイルを記録
         except FileNotFoundError:
-            st.error("エラー: 初期データファイル 'tango.csv' が見つかりません。")
+            st.error(f"エラー: データファイル '{file_path}' が見つかりません。")
             st.session_state.quiz_df = None
         except Exception as e:
-            st.error(f"初期データのロード中にエラーが発生しました: {e}")
+            st.error(f"データファイル '{file_path}' のロード中にエラーが発生しました: {e}")
             st.session_state.quiz_df = None
+
+    def _load_initial_data(self):
+        """初期データをロードし、セッション状態に設定します。"""
+        # アプリが起動した際に、まずtango_results.csvが存在するかを確認
+        if os.path.exists("tango_results.csv"):
+            self._load_data_from_file("tango_results.csv")
+            st.session_state.data_source_selection = "初期データ" # 自動で結果ファイルをロードしたら初期データ選択に
+            st.session_state.main_data_source_radio = "初期データ" # ラジオボタンも同期
+        else:
+            self._load_data_from_file("tango.csv")
+
 
     def _load_uploaded_data(self):
         """アップロードされたデータをロードし、セッション状態に設定します。"""
         if st.session_state.uploaded_df_temp is not None:
-            st.session_state.quiz_df = self._process_df_types(st.session_state.uploaded_df_temp.copy())
-            st.success(f"'{st.session_state.uploaded_file_name}' をロードしました！")
-            self._reset_quiz_state_only()
+            # アップロードされたファイル名に対応するresultsファイルがあればそれをロード
+            uploaded_results_file = f"{os.path.splitext(st.session_state.uploaded_file_name)[0]}_results.csv"
+            if os.path.exists(uploaded_results_file):
+                self._load_data_from_file(uploaded_results_file)
+                st.session_state.data_source_selection = "アップロード"
+                st.session_state.main_data_source_radio = "アップロード"
+            else:
+                st.session_state.quiz_df = self._process_df_types(st.session_state.uploaded_df_temp.copy())
+                st.success(f"'{st.session_state.uploaded_file_name}' をロードしました！")
+                self._reset_quiz_state_only()
+                st.session_state.current_data_file = st.session_state.uploaded_file_name # アップロードされたファイル名を記録
         else:
             st.warning("アップロードされたデータが見つかりません。")
             st.session_state.quiz_df = None # データがない場合はNoneを設定
@@ -277,10 +299,20 @@ class QuizApp:
                     st.session_state.uploaded_file_size = uploaded_file.size
                     
                     # アップロードされたファイルをすぐにアクティブなデータソースとして設定
-                    st.session_state.quiz_df = self._process_df_types(uploaded_df.copy())
+                    # アップロードファイルに対応するresultsファイルがあればそれをロード
+                    uploaded_results_file = f"{os.path.splitext(uploaded_file.name)[0]}_results.csv"
+                    if os.path.exists(uploaded_results_file):
+                        self._load_data_from_file(uploaded_results_file)
+                        st.session_state.data_source_selection = "アップロード" # データソースをアップロードに切り替える
+                        st.success(f"'{uploaded_results_file}' (結果ファイル) をロードしました！")
+                    else:
+                        st.session_state.quiz_df = self._process_df_types(uploaded_df.copy())
+                        st.success(f"'{uploaded_file.name}' をロードしました！")
+                        self._reset_quiz_state_only()
+
                     st.session_state.data_source_selection = "アップロード" # データソースをアップロードに切り替える
-                    self._reset_quiz_state_only()
-                    st.success(f"'{uploaded_file.name}' をロードしました！")
+                    st.session_state.current_data_file = uploaded_file.name # アップロードされたファイル名を記録
+
                 except Exception as e:
                     st.error(f"ファイルの読み込み中にエラーが発生しました: {e}")
                     st.session_state.uploaded_df_temp = None
@@ -400,6 +432,23 @@ class QuizApp:
         st.session_state.debug_message_error = ""
         st.session_state.debug_message_answer_end = ""
 
+    def _save_quiz_data_to_csv(self):
+        """現在のクイズデータをCSVファイルに保存します。"""
+        try:
+            # アプリの実行ディレクトリを取得
+            save_directory = os.path.dirname(os.path.abspath(__file__)) 
+            
+            # 現在のファイル名に "_results" を付けて保存
+            base_name, ext = os.path.splitext(st.session_state.current_data_file)
+            save_path = os.path.join(save_directory, f"{os.path.basename(base_name)}_results.csv")
+            
+            st.session_state.quiz_df.to_csv(save_path, index=False, encoding='utf-8')
+            if st.session_state.debug_mode:
+                st.info(f"DEBUG: データが '{save_path}' に保存されました。")
+        except Exception as e:
+            st.error(f"データの保存中にエラーが発生しました: {e}")
+            if st.session_state.debug_mode:
+                st.error(f"DEBUG: データ保存エラー: {e}")
 
     def _handle_answer_submission(self, user_answer):
         """ユーザーの回答を処理し、セッション状態を更新します。"""
@@ -433,6 +482,9 @@ class QuizApp:
                 st.session_state.total += 1
                 st.session_state.answered_words.add(term) # 回答済み単語に追加
                 st.session_state.latest_correct_description = correct_answer_description
+
+                # ここでCSVファイルにデータを保存
+                self._save_quiz_data_to_csv()
 
 
                 if st.session_state.debug_mode:
@@ -547,6 +599,16 @@ class QuizApp:
 def main():
     quiz_app = QuizApp()
 
+    # アプリケーションの初期ロード時に初期データをロード
+    # または、保存された結果ファイルをロード
+    if st.session_state.quiz_df is None:
+        if st.session_state.data_source_selection == "初期データ":
+            quiz_app._load_initial_data() # tango_results.csv があれば自動でロードされる
+        elif st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is not None:
+            quiz_app._load_uploaded_data() # アップロードファイルに対応するresultsファイルがあればロードされる
+        elif st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is None:
+            st.info("アップロードされたデータがありません。") # アップロードが選択されているがファイルがない場合
+
     # サイドバーのデータソース選択
     st.sidebar.header("📚 データソース")
     data_source_options_radio = ["初期データ", "アップロード"]
@@ -556,9 +618,6 @@ def main():
         st.session_state.data_source_selection = st.session_state.main_data_source_radio
         
         if st.session_state.data_source_selection == "初期データ":
-            # QuizAppのインスタンスメソッドとしてではなく、直接関数を呼び出すか、
-            # QuizAppのメソッドがstaticである必要があります。
-            # ここでは直接QuizAppインスタンスのメソッドを呼べるようにquiz_appを外で初期化しています。
             quiz_app._load_initial_data() 
             st.session_state.uploaded_df_temp = None
             st.session_state.uploaded_file_name = None
@@ -566,6 +625,8 @@ def main():
         else: # "アップロード"が選択された場合
             if st.session_state.uploaded_df_temp is not None:
                 quiz_app._load_uploaded_data()
+            else:
+                 st.info("ファイルをアップロードしてください。")
 
     selected_source_radio = st.sidebar.radio(
         "**データソースを選択**",
@@ -587,17 +648,9 @@ def main():
     if uploaded_file is not None:
         quiz_app.handle_upload_logic(uploaded_file)
     else:
-        if st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is None:
-            st.session_state.data_source_selection = "初期データ" 
-            quiz_app._load_initial_data()
-
-
-    # アプリケーションの初期ロード時に初期データをロード
-    if st.session_state.quiz_df is None:
-        if st.session_state.data_source_selection == "初期データ":
-            quiz_app._load_initial_data()
-        elif st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is not None:
-            quiz_app._load_uploaded_data()
+        # アップロードファイルがクリアされた場合、かつデータソースが「アップロード」のままの場合
+        # handle_upload_logic内部で初期データに戻す処理は行われたため、ここでは特に何もしない
+        pass
 
 
     # タブの作成
@@ -697,4 +750,6 @@ def main():
     """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
+    # アプリの実行ディレクトリを表示（デバッグ用）
+    print(f"DEBUG: Current working directory: {os.getcwd()}", file=sys.stderr)
     main()
