@@ -408,7 +408,7 @@ class QuizApp:
 
         st.sidebar.header("設定")
         self.upload_data() # アップロード機能を追加
-        self.offer_download() # ダウンロード機能
+        self.offer_download() # ダウンロード機能を追加しました
         self.reset_session_button() # リセットボタン
 
         st.sidebar.markdown("---")
