@@ -170,10 +170,9 @@ class QuizApp:
 
     def show_progress(self, df_filtered):
         """現在の学習進捗（回答数、正解数）を表示します。"""
-        answered_in_filter = df_filtered[df_filtered["単語"].isin(st.session_state.answered_words)]
-        
-        st.markdown(f"📊 **進捗：{len(answered_in_filter)} / {len(df_filtered)} 語**")
-        st.markdown(f"🔁 **総回答 (現フィルター内)：{st.session_state.total} 回 / 🎯 正解 (現フィルター内)：{st.session_state.correct} 回**")
+        # --- ここから変更 ---
+        st.markdown(f"📊 **進捗：{st.session_state.total} 回 / {len(df_filtered)} 語 (正解: {st.session_state.correct} 回)**")
+        # --- 変更ここまで ---
         
     def load_quiz(self, df_filtered: pd.DataFrame, remaining_df: pd.DataFrame):
         """新しいクイズをロードし、セッション状態を更新します。不正解回数に基づいて出題します。"""
@@ -236,7 +235,6 @@ class QuizApp:
         st.markdown(f"🧩 **午後記述での使用例：** {q['記述']}")
         st.markdown(f"🎯 **使用理由／文脈：** {q['文脈']}")
         st.markdown(f"🕘 **試験区分：** {q['区分']}")
-        # 以下の行から「シラバス改定有無」の表示を削除
         st.markdown(f"📈 **出題確率（推定）：** {q['出題確率（推定）']}　📝 **改定の意図・影響：** {q['改定の意図・影響']}")
 
     def _handle_answer_submission(self, selected_option_text: str, current_quiz_data: dict):
