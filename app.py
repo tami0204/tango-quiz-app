@@ -178,7 +178,7 @@ class QuizApp:
         """初期データをロードし、セッション状態に設定します。"""
         try:
             # CSVファイルを直接読み込む (エンコーディング指定)
-            df = pd.read_csv("tangocsv", encoding='utf-8')
+            df = pd.read_csv("tango.csv", encoding='utf-8')
             st.session_state.quiz_df = self._process_df_types(df)
             st.success("初期データをロードしました！")
             self._reset_quiz_state_only()
