@@ -302,6 +302,7 @@ class QuizApp:
 
     def _apply_filters(self, df: pd.DataFrame) -> pd.DataFrame:
         """セッション状態のフィルターに基づいてDataFrameをフィルターします。"""
+        # @st.cache_data デコレータを削除し、常に最新のデータを参照するようにする
         filtered_df = df.copy()
 
         if st.session_state.filter_category != "すべて":
@@ -444,10 +445,12 @@ class QuizApp:
 
         # クイズの開始・リロードボタン
         if st.button("クイズ開始 / 次の問題", key="start_quiz_button"):
-            self.load_quiz(df_filtered, remaining_df)
+            # load_quizを呼ぶ前に最新のremaining_dfを渡すために、ここで再計算
+            current_df_filtered = quiz_app._apply_filters(st.session_state.quiz_df)
+            current_remaining_df = current_df_filtered[current_df_filtered["〇×結果"] == '']
+            self.load_quiz(current_df_filtered, current_remaining_df)
             st.session_state.latest_result = "" # 新しい問題では結果をリセット
             st.session_state.latest_correct_description = ""
-            # load_quiz が None を返した場合も、再描画してメッセージを表示させる
             st.rerun() 
 
         if st.session_state.current_quiz:
@@ -589,27 +592,21 @@ def main():
     # タブの作成
     tab1, tab2 = st.tabs(["クイズ", "データビューア"])
 
-    with tab1:
-        st.header("情報処理試験対策クイズ")
-        
-        # クイズモードの選択
-        st.sidebar.header("🎯 クイズモード") # このヘッダーは残します
-        
-        # --- クイズモードの順序を変更 ---
+    # --- サイドバーに表示するフィルターと件数の計算を、sidebarコンテキスト内で実行 ---
+    with st.sidebar:
+        st.header("🎯 クイズモード")
         quiz_modes = ["未回答", "苦手", "復習"]
-        # --- 変更ここまで ---
-
-        st.session_state.quiz_mode = st.sidebar.radio(
-            "", # <-- ラベルテキストを空に
+        st.session_state.quiz_mode = st.radio(
+            "",
             quiz_modes, 
             index=quiz_modes.index(st.session_state.quiz_mode) if st.session_state.quiz_mode in quiz_modes else 0,
             key="quiz_mode_radio",
-            label_visibility="hidden" # <-- これでラベルを完全に非表示にする
+            label_visibility="hidden"
         )
 
-        st.sidebar.header("クイズの絞り込み") 
+        st.header("クイズの絞り込み") 
         
-        # --- df_filtered と remaining_df の計算をサイドバー表示の直前に移動 ---
+        # フィルターの適用と件数の計算
         df_filtered = pd.DataFrame()
         remaining_df = pd.DataFrame()
 
@@ -617,14 +614,14 @@ def main():
             df_base_for_filters = st.session_state.quiz_df.copy() 
 
             categories = ["すべて"] + df_base_for_filters["カテゴリ"].dropna().unique().tolist()
-            st.session_state.filter_category = st.sidebar.selectbox(
+            st.session_state.filter_category = st.selectbox(
                 "カテゴリで絞り込み", categories, 
                 index=categories.index(st.session_state.filter_category) if st.session_state.filter_category in categories else 0,
                 key="filter_category_selectbox"
             )
 
             fields = ["すべて"] + df_base_for_filters["分野"].dropna().unique().tolist()
-            st.session_state.filter_field = st.sidebar.selectbox(
+            st.session_state.filter_field = st.selectbox(
                 "分野で絞り込み", fields, 
                 index=fields.index(st.session_state.filter_field) if st.session_state.filter_field in fields else 0,
                 key="filter_field_selectbox"
@@ -633,40 +630,45 @@ def main():
             valid_syllabus_changes = df_base_for_filters["シラバス改定有無"].astype(str).str.strip().replace('', pd.NA).dropna().unique().tolist()
             syllabus_change_options = ["すべて"] + sorted(valid_syllabus_changes)
             
-            st.session_state.filter_level = st.sidebar.selectbox(
+            st.session_state.filter_level = st.selectbox(
                 "🔄 シラバス改定有無で絞り込み", 
                 syllabus_change_options, 
                 index=syllabus_change_options.index(st.session_state.filter_level) if st.session_state.filter_level in syllabus_change_options else 0,
                 key="filter_level_selectbox"
             )
 
+            # ここでフィルターを適用し、常に最新の df_filtered と remaining_df を取得
             df_filtered = quiz_app._apply_filters(st.session_state.quiz_df)
             remaining_df = df_filtered[df_filtered["〇×結果"] == '']
         else:
-            st.sidebar.info("データがロードされていません。") 
-        # --- 修正ここまで ---
+            st.info("データがロードされていません。") 
         
         # 各件数をサイドバーに表示
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("📊 クイズ進捗")
+        st.markdown("---")
+        st.subheader("📊 クイズ進捗")
         
         # フィルタリングされた単語の総数を計算
         filtered_count = len(df_filtered)
 
-        st.sidebar.markdown(f"<div class='metric-container'><span class='metric-label'>正解：</span><span class='metric-value'>{st.session_state.correct}</span></div>", unsafe_allow_html=True)
-        st.sidebar.markdown(f"<div class='metric-container'><span class='metric-label'>回答：</span><span class='metric-value'>{st.session_state.total}</span></div>", unsafe_allow_html=True)
-        st.sidebar.markdown(f"<div class='metric-container'><span class='metric-label'>未回答：</span><span class='metric-value'>{len(remaining_df)}</span></div>", unsafe_allow_html=True)
-        st.sidebar.markdown(f"<div class='metric-container'><span class='metric-label'>対象：</span><span class='metric-value'>{filtered_count}</span></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='metric-container'><span class='metric-label'>正解：</span><span class='metric-value'>{st.session_state.correct}</span></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='metric-container'><span class='metric-label'>回答：</span><span class='metric-value'>{st.session_state.total}</span></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='metric-container'><span class='metric-label'>未回答：</span><span class='metric-value'>{len(remaining_df)}</span></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='metric-container'><span class='metric-label'>対象：</span><span class='metric-value'>{filtered_count}</span></div>", unsafe_allow_html=True)
 
         # デバッグモードの切り替え
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("開発者ツール")
-        st.session_state.debug_mode = st.sidebar.checkbox(
+        st.markdown("---")
+        st.subheader("開発者ツール")
+        st.session_state.debug_mode = st.checkbox(
             "デバッグモードを有効にする", 
             value=st.session_state.debug_mode, 
             key="debug_mode_checkbox"
         )
+    # --- サイドバーの処理はここまで ---
 
+    with tab1:
+        st.header("情報処理試験対策クイズ")
+        # メインコンテンツで quiz_app.display_quiz を呼び出す際は、
+        # サイドバーで計算された df_filtered と remaining_df を渡す
         quiz_app.display_quiz(df_filtered, remaining_df)
 
     with tab2:
