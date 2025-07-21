@@ -522,9 +522,8 @@ class QuizApp:
                     st.session_state.uploaded_df_temp = processed_uploaded_df
                     st.session_state.uploaded_file_name = uploaded_file.name
                     st.session_state.uploaded_file_size = uploaded_file.size
-                    st.sidebar.success(f"✅ ファイル '{uploaded_file.name}' を一時的に読み込みました。")
                     
-                    st.session_state.data_source_selection = "アップロード"
+                    st.session_state.data_source_selection = "アップロード" # ファイルがアップロードされたら、確実にアップロードモードにする
                     self._load_uploaded_data() 
                     st.rerun() 
                 except Exception as e:
@@ -565,16 +564,15 @@ def main():
             
             if st.session_state.data_source_selection == "初期データ":
                 quiz_app._load_initial_data()
-                st.sidebar.success("✅ 初期データに切り替えました。")
+                # st.sidebar.success("✅ 初期データに切り替えました。") # この行を削除
                 st.session_state.uploaded_df_temp = None
                 st.session_state.uploaded_file_name = None
                 st.session_state.uploaded_file_size = None
             else: # "アップロード"が選択された場合
-                # ここで `st.sidebar.info("CSVファイルをアップロードしてください。")` を完全に削除
                 if st.session_state.uploaded_df_temp is not None:
                     quiz_app._load_uploaded_data()
-                    st.sidebar.success(f"✅ アップロードされたデータ ({st.session_state.uploaded_file_name}) を適用しました。")
-                # else: （ここにメッセージ表示ロジックがあったが削除）
+                    # st.sidebar.success(f"✅ アップロードされたデータ ({st.session_state.uploaded_file_name}) を適用しました。") # この行を削除
+                # else: ここに `st.sidebar.info("CSVファイルをアップロードしてください。")` があったが削除済み
             
             st.rerun() 
 
