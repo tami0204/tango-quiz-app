@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import random
 import os
-import plotly.express as px # この行は残しておきますが、使用しない部分を削除します
+# import plotly.express as px # グラフ表示が不要なため、インポートも不要に
 import datetime
 
 class QuizApp:
@@ -195,10 +195,10 @@ class QuizApp:
             return # current_quiz_dataがNoneの場合は何もしない
 
         st.subheader(f"問題: **{current_quiz_data['単語']}**")
-        st.markdown(f"🧩 **午後記述での使用例：** {current_quiz_data.get('午後記述での使用例', 'N/A')}")
-        st.markdown(f"🎯 **使用理由／文脈：** {current_quiz_data.get('使用理由／文脈', 'N/A')}")
-        st.markdown(f"🕘 **試験区分：** {current_quiz_data.get('試験区分', 'N/A')}")
-        st.markdown(f"📈 **出題確率（推定）：** {current_quiz_data.get('出題確率（推定）', 'N/A')}　📝 **改定の意図・影響：** {current_quiz_data.get('改定の意図・影響', 'N/A')}")
+        st.write(f"🧩 **午後記述での使用例：** {current_quiz_data.get('午後記述での使用例', 'N/A')}")
+        st.write(f"🎯 **使用理由／文脈：** {current_quiz_data.get('使用理由／文脈', 'N/A')}")
+        st.write(f"🕘 **試験区分：** {current_quiz_data.get('試験区分', 'N/A')}")
+        st.write(f"📈 **出題確率（推定）：** {current_quiz_data.get('出題確率（推定）', 'N/A')}　📝 **改定の意図・影響：** {current_quiz_data.get('改定の意図・影響', 'N/A')}")
         
         with st.form("quiz_form"):
             selected_option_text = st.radio(
@@ -216,16 +216,17 @@ class QuizApp:
 
         if st.session_state.quiz_answered:
             st.markdown(f"### {st.session_state.latest_result}")
+            # 正解の説明を再表示するロジックをここに戻しました
             if st.session_state.latest_result.startswith("❌"):
                 st.info(f"正解は: **{st.session_state.latest_correct_description}** でした。")
+            else: # 正解の場合も説明を表示したい場合はこのelseも残す (今回は正解の場合も表示するようにします)
+                 st.success(f"正解は: **{st.session_state.latest_correct_description}** でした！")
             
             # Geminiへの質問ボタン (既存)
             st.markdown(
-                f'<div style="text-align: left; margin-top: 10px;">'
                 f'<a href="https://gemini.google.com/" target="_blank">'
                 f'<img src="https://www.gstatic.com/lamda/images/gemini_logo_lockup_eval_ja_og.svg" alt="Geminiに質問する" width="50">'
-                f'</a>'
-                f'</div>',
+                f'</a>',
                 unsafe_allow_html=True
             )
             
@@ -296,16 +297,6 @@ class QuizApp:
         progress_percent = (answered_filtered_words / total_filtered_words) if total_filtered_words > 0 else 0
         st.progress(progress_percent, text=f"回答済み: {answered_filtered_words} / {total_filtered_words} 単語")
 
-        # 進捗グラフ (この部分は削除しました)
-        # progress_data = {
-        #     '状態': ['回答済み', '未回答'],
-        #     '単語数': [answered_filtered_words, total_filtered_words - answered_filtered_words]
-        # }
-        # progress_df = pd.DataFrame(progress_data)
-        # fig = px.pie(progress_df, values='単語数', names='状態', title='学習進捗',
-        #              color_discrete_sequence=px.colors.qualitative.Pastel)
-        # st.plotly_chart(fig, use_container_width=True)
-
     def show_completion(self):
         """すべての問題が終了した際に表示するメッセージ。"""
         st.success("🎉 おめでとうございます！すべての問題に回答しました！")
@@ -322,136 +313,4 @@ class QuizApp:
         # 回答履歴がある単語のみに絞り込む
         display_df = display_df[
             (display_df['正解回数'] > 0) | (display_df['不正解回数'] > 0)
-        ].sort_values(by=['不正解回数', '正解回数', '最終実施日時'], ascending=[False, False, False]) # 不正解が多い順、次いで正解が多い順、最後に実施日時が新しい順
-
-        if not display_df.empty:
-            # 日時カラムの表示形式を整形
-            display_df['最終実施日時'] = display_df['最終実施日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
-            display_df['次回実施予定日時'] = display_df['次回実施予定日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
-            st.dataframe(display_df, use_container_width=True, hide_index=True)
-        else:
-            st.info("まだ回答履歴のある単語はありません。")
-
-    def offer_download(self):
-        """現在の学習データのCSVダウンロードボタンを提供します。"""
-        # 現在の日時を取得し、指定されたフォーマットで文字列化
-        now = datetime.datetime.now()
-        file_name = f"tango_learning_data_{now.strftime('%Y%m%d_%H%M%S')}.csv"
-
-        # 日時カラムをCSV出力用に文字列に変換（NaNは空文字列に）
-        df_to_save = st.session_state.quiz_df.copy()
-        df_to_save['最終実施日時'] = df_to_save['最終実施日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
-        df_to_save['次回実施予定日時'] = df_to_save['次回実施予定日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
-
-        # quiz_df をCSVに変換
-        csv_quiz_data = df_to_save.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-        st.download_button("📥 **現在の学習データをダウンロード**", data=csv_quiz_data, file_name=file_name, mime="text/csv")
-
-    def upload_data(self):
-        """ユーザーがCSVファイルをアップロードする機能を提供します。"""
-        uploaded_file = st.sidebar.file_uploader("⬆️ **学習データをアップロードして再開**", type=["csv"])
-        if uploaded_file is not None:
-            try:
-                uploaded_df = pd.read_csv(uploaded_file, encoding="utf-8-sig")
-                
-                # 必須カラムのチェック (日時カラムも必須として追加)
-                required_cols = ["単語", "説明", "カテゴリ", "分野", "正解回数", "不正解回数", "〇×結果", "最終実施日時", "次回実施予定日時"]
-                missing_cols = [col for col in required_cols if col not in uploaded_df.columns]
-                if missing_cols:
-                    st.error(f"アップロードされたCSVには、以下の必要なカラムが不足しています: {', '.join(missing_cols)}。正しい学習データCSVをアップロードしてください。")
-                    return
-
-                # アップロードされたデータと元の単語帳データをマージする
-                # 元の単語帳の全ての情報を保持しつつ、アップロードされた学習履歴（正解回数、不正解回数、〇×結果、日時）を優先する
-                merged_df = self.initial_df.set_index('単語').copy()
-                uploaded_df_for_merge = uploaded_df.set_index('単語')
-                
-                # 更新するカラムリスト
-                update_cols = ['〇×結果', '正解回数', '不正解回数', '最終実施日時', '次回実施予定日時']
-                
-                # アップロードされたDFの学習履歴関連カラムで更新
-                # 存在しない単語は無視される
-                merged_df.update(uploaded_df_for_merge[update_cols])
-                
-                final_df = merged_df.reset_index()
-
-                # データ型の再確認とNaN処理
-                final_df['〇×結果'] = final_df['〇×結果'].astype(str).replace('nan', '')
-                final_df['正解回数'] = final_df['正解回数'].fillna(0).astype(int)
-                final_df['不正解回数'] = final_df['不正解回数'].fillna(0).astype(int)
-                
-                # 日時カラムをdatetime型に変換
-                final_df['最終実施日時'] = pd.to_datetime(final_df['最終実施日時'], errors='coerce')
-                final_df['次回実施予定日時'] = pd.to_datetime(final_df['次回実施予定日時'], errors='coerce')
-
-                st.session_state.quiz_df = final_df
-                
-                # 回答済み単語セットも更新
-                st.session_state.answered_words = set(st.session_state.quiz_df[
-                    (st.session_state.quiz_df['正解回数'] > 0) | (st.session_state.quiz_df['不正解回数'] > 0)
-                ]["単語"].tolist())
-
-                st.success("✅ 学習データを正常にロードしました！")
-                st.rerun() # データをロードしたらアプリを再実行
-            except Exception as e:
-                st.error(f"CSVファイルの読み込み中にエラーが発生しました: {e}")
-                st.info("ファイルが正しいCSV形式であるか、またはエンコーディングが 'utf-8-sig' であるか確認してください。")
-
-    def reset_session_button(self):
-        """セッションリセットボタンを表示します。"""
-        if st.sidebar.button("🔄 **学習データをリセット**"):
-            self._reset_session_state()
-
-    def run(self):
-        st.set_page_config(layout="wide", page_title="用語クイズアプリ")
-        st.title("🥷 用語クイズアプリ")
-
-        st.sidebar.header("設定")
-        self.upload_data() # アップロード機能を追加
-        self.offer_download() # ダウンロード機能を追加しました
-        self.reset_session_button() # リセットボタン
-
-        st.sidebar.markdown("---")
-        st.sidebar.header("フィルター")
-        df_filtered, remaining_df = self.filter_data()
-
-        st.markdown("---")
-
-        self.show_progress(df_filtered) # 学習進捗はプログレスバーのみ
-
-        if st.session_state.current_quiz is None:
-            self.load_quiz(df_filtered, remaining_df)
-
-        if st.session_state.current_quiz is not None:
-            self.display_quiz(df_filtered, remaining_df)
-        elif st.session_state.total > 0:
-            self.show_completion()
-        else:
-            st.info("選択されたフィルター条件に一致する単語がありません。フィルターを変更してください。")
-
-        st.markdown("---")
-        self.display_statistics()
-
-# アプリケーションの開始点
-try:
-    # お客様の元のデータファイル「tango.csv」を読み込むように修正しました。
-    # GitHubリポジトリの app.py と同じ階層に "tango.csv" があることを前提としています。
-    data_file_path = "tango.csv" # ここでファイル名を "tango.csv" に指定
-    
-    # ファイルが存在するかを事前にチェック
-    if not os.path.exists(data_file_path):
-        st.error(f"エラー: '{data_file_path}' が見つかりません。")
-        st.info("GitHubリポジトリの `app.py` と同じフォルダに、データファイル「tango.csv」があるか確認してください。")
-        st.stop() # アプリの実行を停止
-
-    # CSVファイルとして読み込む
-    df = pd.read_csv(data_file_path, encoding="utf-8-sig")
-
-except Exception as e:
-    st.error(f"データファイルの読み込み中にエラーが発生しました: {e}")
-    st.info("データファイル「tango.csv」の形式が正しいか、またはエンコーディングが 'utf-8-sig' であるか確認してください。")
-    st.stop()
-
-# QuizApp インスタンスを作成し、元のDataFrameを渡す
-app = QuizApp(df)
-app.run()
+        ].sort_values(by=['不正解回数', '正解回数', '最終実施日時'], ascending=[False, False, False
