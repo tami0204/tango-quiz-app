@@ -12,23 +12,29 @@ def set_custom_css():
         /* 全体の余白とフォントサイズ調整 */
         .stApp {
             padding-top: 20px; /* 全体の上部余白を少し減らす */
-            padding-bottom: 20px; /* 全体の下部余白を少し減らす */
+            padding-bottom: 20px; /* 全体Dの下部余白を少し減らす */
         }
         .stApp > header { /* Streamlitのデフォルトヘッダーを非表示 */
             display: none;
         }
 
-        /* サイドバーの余白調整 */
+        /* サイドバー全体の最上部パディングをさらに厳密にゼロにする */
         .stSidebar > div:first-child {
-            padding-top: 5px !important; /* サイドバー全体の上部パディングをさらに減らす */
+            padding-top: 0px !important; 
+            margin-top: 0px !important;
             padding-bottom: 20px;
+        }
+        /* サイドバー内のコンテナの上部余白も調整 */
+        .stSidebar .st-emotion-cache-1oe5zby { /* Streamlitの内部コンテナクラスの可能性あり。バージョンにより変更の可能性あり */
+            padding-top: 0px !important;
+            margin-top: 0px !important;
         }
         .stSidebar .stRadio div { /* ラジオボタンの選択肢間の余白を調整 */
             padding-top: 5px;
             padding-bottom: 5px;
         }
         .stSidebar h2, .stSidebar h3 { /* サイドバーの見出しの上下余白 */
-            margin-top: 0.5rem; /* 見出しの上部余白を減らす */
+            margin-top: 0.2rem; /* 見出しの上部余白をさらに減らす */
             margin-bottom: 0.8rem;
         }
         
@@ -430,236 +436,4 @@ class QuizApp:
             st.session_state.debug_message_answer_update = f"DEBUG: '{word}' の学習履歴を更新しました。正解回数={temp_df.at[idx, '正解回数']}, 不正解回数={temp_df.at[idx, '不正解回数']}"
             st.session_state.debug_message_error = ""
         else:
-            st.session_state.debug_message_error = f"DEBUG: エラー - 単語 '{word}' がDataFrameに見つかりませんでした。"
-            st.session_state.debug_message_answer_update = ""
-
-        st.session_state.quiz_df = temp_df
-
-        st.session_state.quiz_answered = True
-        st.session_state.debug_message_answer_end = f"DEBUG: _handle_answer_submission 終了。quiz_answered={st.session_state.quiz_answered}, total={st.session_state.total}, correct={st.session_state.correct}"
-
-    def show_progress(self, df_filtered: pd.DataFrame):
-        """学習の進捗を表示します。"""
-        st.sidebar.subheader("学習の進捗")
-        
-        total_filtered_words = len(df_filtered)
-        answered_filtered_words = len(df_filtered[df_filtered["単語"].isin(st.session_state.answered_words)])
-
-        if total_filtered_words == 0:
-            st.sidebar.info("現在のフィルター条件に一致する単語がありません。")
-            return
-
-        progress_percent = (answered_filtered_words / total_filtered_words) if total_filtered_words > 0 else 0
-        
-        st.sidebar.markdown(f"**<span style='font-size: 1.1em;'>回答済み: {answered_filtered_words} / {total_filtered_words} 単語</span>**", unsafe_allow_html=True)
-        st.sidebar.progress(progress_percent)
-
-    def show_completion(self):
-        """すべての問題が終了した際に表示するメッセージ。"""
-        st.success("🎉 おめでとうございます！現在のフィルター条件のすべての問題に回答しました！")
-        st.write(f"合計 {st.session_state.total} 問中、{st.session_state.correct} 問正解しました。")
-        if st.session_state.total > 0:
-            st.write(f"正答率: {st.session_state.correct / st.session_state.total * 100:.2f}%")
-        else:
-            st.write("まだ問題に回答していません。")
-
-    def display_statistics(self):
-        """単語ごとの正解・不正解回数と日時情報を表示します。"""
-        st.subheader("単語ごとの学習統計")
-        
-        display_cols = ['単語', '説明', 'カテゴリ', '分野', 'シラバス改定有無', 
-                        '正解回数', '不正解回数', '〇×結果', '最終実施日時', '次回実施予定日時']
-        
-        cols_to_display = [col for col in display_cols if col in st.session_state.quiz_df.columns]
-        display_df = st.session_state.quiz_df[cols_to_display].copy()
-        
-        display_df = display_df[
-            (display_df['正解回数'] > 0) | (display_df['不正解回数'] > 0)
-        ].sort_values(by=['不正解回数', '正解回数', '最終実施日時'], ascending=[False, False, False])
-        
-        if not display_df.empty:
-            if '最終実施日時' in display_df.columns:
-                display_df['最終実施日時'] = display_df['最終実施日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
-            if '次回実施予定日時' in display_df.columns:
-                display_df['次回実施予定日時'] = display_df['次回実施予定日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
-            st.dataframe(display_df, use_container_width=True, hide_index=True)
-        else:
-            st.info("まだ回答履歴のある単語はありません。")
-
-    def offer_download(self):
-        """現在の学習データのCSVダウンロードボタンを提供します。"""
-        now = datetime.datetime.now()
-        file_name = f"tango_learning_data_{now.strftime('%Y%m%d_%H%M%S')}.csv"
-
-        df_to_save = st.session_state.quiz_df.copy(deep=True)
-        if '最終実施日時' in df_to_save.columns:
-            df_to_save['最終実施日時'] = df_to_save['最終実施日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
-        if '次回実施予定日時' in df_to_save.columns:
-            df_to_save['次回実施予定日時'] = df_to_save['次回実施予定日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
-
-        csv_quiz_data = df_to_save.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-        return csv_quiz_data, file_name 
-
-    def handle_upload_logic(self, uploaded_file):
-        """アップロードされたファイルの処理ロジックをカプセル化。"""
-        if uploaded_file is not None:
-            # ファイル名とサイズが変わった場合のみ再処理
-            if st.session_state.uploaded_file_name != uploaded_file.name or \
-               st.session_state.get('uploaded_file_size') != uploaded_file.size: 
-                try:
-                    uploaded_df = pd.read_csv(uploaded_file, encoding="utf-8-sig")
-                    
-                    required_core_cols = ["単語", "説明", "カテゴリ", "分野"]
-                    missing_core_cols = [col for col in required_core_cols if col not in uploaded_df.columns]
-                    if missing_core_cols:
-                        st.sidebar.error(f"アップロードされたCSVには、以下の**必須カラム**が不足しています: {', '.join(missing_core_cols)}。")
-                        st.sidebar.info("これらはクイズの出題に不可欠な情報です。正しい形式のCSVファイルをアップロードしてください。")
-                        st.session_state.uploaded_df_temp = None
-                        st.session_state.uploaded_file_name = None
-                        st.session_state.uploaded_file_size = None
-                        return
-
-                    processed_uploaded_df = self._process_df_types(uploaded_df.copy(deep=True))
-                    st.session_state.uploaded_df_temp = processed_uploaded_df
-                    st.session_state.uploaded_file_name = uploaded_file.name
-                    st.session_state.uploaded_file_size = uploaded_file.size
-                    
-                    st.session_state.data_source_selection = "アップロード" # ファイルがアップロードされたら、確実にアップロードモードにする
-                    self._load_uploaded_data() 
-                    st.rerun() 
-                except Exception as e:
-                    st.sidebar.error(f"CSVファイルの読み込み中にエラーが発生しました。ファイル形式が正しいか確認してください: {e}")
-                    st.session_state.uploaded_df_temp = None
-                    st.session_state.uploaded_file_name = None
-                    st.session_state.uploaded_file_size = None
-
-
-# --- main関数の定義 ---
-def main():
-    st.set_page_config(layout="wide", page_title="IT用語クイズアプリ", page_icon="📝")
-    set_custom_css()
-
-    csv_path = os.path.join(os.path.dirname(__file__), 'tango.csv')
-    if not os.path.exists(csv_path):
-        st.error(f"エラー: tango.csv が見つかりません。パス: {csv_path}")
-        st.stop()
-
-    try:
-        original_df = pd.read_csv(csv_path, encoding='utf-8-sig')
-    except Exception as e:
-        st.error(f"初期データの読み込み中にエラーが発生しました: {e}")
-        st.stop()
-
-    quiz_app = QuizApp(original_df) 
-
-    st.title("📝 IT用語クイズアプリ")
-    st.markdown("毎日少しずつIT用語を学習し、知識を定着させましょう！")
-
-    # --- サイドバーのレイアウト調整 ---
-    st.sidebar.header("設定とデータ")
-    
-    data_source_options_radio = ["アップロード", "初期データ"]
-    
-    def on_data_source_change():
-        if st.session_state.main_data_source_radio != st.session_state.data_source_selection:
-            st.session_state.data_source_selection = st.session_state.main_data_source_radio
-            
-            if st.session_state.data_source_selection == "初期データ":
-                quiz_app._load_initial_data()
-                st.session_state.uploaded_df_temp = None
-                st.session_state.uploaded_file_name = None
-                st.session_state.uploaded_file_size = None
-            else: # "アップロード"が選択された場合
-                if st.session_state.uploaded_df_temp is not None:
-                    quiz_app._load_uploaded_data()
-            
-            st.rerun() 
-
-    selected_source_radio = st.sidebar.radio(
-        "📚 **使用するデータソースを選択**",
-        options=data_source_options_radio,
-        key="main_data_source_radio",
-        index=data_source_options_radio.index(st.session_state.data_source_selection) if st.session_state.data_source_selection in data_source_options_radio else 0,
-        on_change=on_data_source_change
-    )
-
-    uploaded_file = st.sidebar.file_uploader(
-        "CSVファイルをアップロード", 
-        type=["csv"], 
-        key="uploader", 
-        label_visibility="hidden",
-        disabled=(st.session_state.data_source_selection == "初期データ")
-    )
-    
-    if uploaded_file is not None:
-        quiz_app.handle_upload_logic(uploaded_file)
-
-    # ダウンロードとリセットボタンを横並びにする
-    # st.sidebar.columns(2) を使用して、明示的に2列レイアウトにする
-    col_dl, col_reset = st.sidebar.columns([0.6, 0.4]) # 幅の比率を調整
-    with col_dl:
-        if st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
-            csv_data, file_name = quiz_app.offer_download()
-            st.download_button(
-                "📥 **学習データをダウンロード**", 
-                data=csv_data, 
-                file_name=file_name, 
-                mime="text/csv",
-                key="download_button"
-            )
-    with col_reset:
-        # widthをautoに設定しているため、ボタンのテキストが短い場合は狭くなる
-        if st.button("🔄 **学習履歴をリセット**", help="現在使用しているデータソースの学習の進捗（正解/不正解回数、回答済み単語）を初期状態に戻します。", key="reset_button"):
-            quiz_app._reset_learning_history() 
-
-    st.sidebar.markdown("---") # 設定とデータの区切り
-
-    st.sidebar.header("クイズの絞り込み")
-    
-    df_filtered = pd.DataFrame()
-    remaining_df = pd.DataFrame()
-    
-    if st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
-        df_filtered, remaining_df = quiz_app.filter_data()
-    else:
-        pass # メッセージはメインエリアで制御
-
-    if st.session_state.current_quiz is None: 
-        if not df_filtered.empty and len(remaining_df) > 0:
-            if st.sidebar.button("▶️ **クイズ開始**", key="sidebar_start_quiz_button"):
-                quiz_app.load_quiz(df_filtered, remaining_df)
-                st.rerun()
-        elif len(df_filtered) > 0 and len(remaining_df) == 0:
-             st.sidebar.info("現在のフィルター条件のすべての問題に回答しました。")
-        elif len(df_filtered) == 0: 
-             st.sidebar.info("現在のフィルター条件に一致する単語がありません。フィルターを変更してください。")
-    
-    st.sidebar.markdown("---") # 絞り込みと進捗の区切り
-
-    quiz_app.show_progress(df_filtered)
-
-    st.markdown("---") # メインコンテンツと統計の区切り
-    
-    # --- メインコンテンツエリアのメッセージ制御 ---
-    if st.session_state.quiz_df is None or st.session_state.quiz_df.empty:
-        if st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is None:
-            st.info("アップロードモードが選択されていますが、まだファイルがアップロードされていません。サイドバーからCSVファイルをアップロードしてください。")
-        else:
-            st.info("クイズを開始するには、まず有効な学習データをロードしてください。") 
-    elif st.session_state.current_quiz is None:
-        if len(df_filtered) > 0 and len(remaining_df) > 0:
-            st.info("データがロードされました！サイドバーの「クイズ開始」ボタンをクリックしてください。")
-        elif len(df_filtered) > 0 and len(remaining_df) == 0:
-            quiz_app.show_completion()
-        else: 
-            st.info("現在のフィルター条件に一致する単語がないか、データがありません。フィルターを変更するか、新しいデータをアップロードしてください。")
-    else:
-        quiz_app.display_quiz(df_filtered, remaining_df)
-    
-    st.markdown("---") 
-    
-    if st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
-        quiz_app.display_statistics()
-
-if __name__ == "__main__":
-    main()
+            st.session_state.debug_message_error = f"DEBUG: エラー - 単語 '{
