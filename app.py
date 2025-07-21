@@ -57,7 +57,7 @@ class QuizApp:
 
         for col in ['最終実施日時', '次回実施予定日時']:
             if col not in df.columns: df[col] = pd.NaT
-            else: df[col] = pd.to_datetime(df[col], errors='coerce')
+            else: df[col] = pd.to_datetime(col, errors='coerce')
         
         if 'シラバス改定有無' not in df.columns: df['シラバス改定有無'] = ''
         else: df['シラバス改定有無'] = df['シラバス改定有無'].astype(str).replace('nan', '')
@@ -65,7 +65,6 @@ class QuizApp:
         if '午後記述での使用例' not in df.columns: df['午後記述での使用例'] = ''
         if '使用理由／文脈' not in df.columns: df['使用理由／文脈'] = ''
         if '試験区分' not in df.columns: df['試験区分'] = ''
-        # 💡 修正点: 全角引用符 '’' を半角引用符 ''' に修正
         if '出題確率（推定）' not in df.columns: df['出題確率（推定）'] = ''
         if '改定の意図・影響' not in df.columns: df['改定の意図・影響'] = ''
 
@@ -394,7 +393,7 @@ class QuizApp:
 
     def upload_data(self):
         """ユーザーがCSVファイルをアップロードする機能を提供します。"""
-        uploaded_file = st.sidebar.file_uploader("⬆️ **CSVファイルをアップロード**", type=["csv"], key="uploader") 
+        uploaded_file = st.sidebar.file_uploader("CSVファイルをアップロード", type=["csv"], key="uploader", label_visibility="hidden") 
         
         if uploaded_file is not None:
             try:
@@ -490,9 +489,20 @@ def main():
         quiz_app.upload_data() 
         if st.session_state.uploaded_df_temp is None:
             st.sidebar.warning("まだ学習データがアップロードされていません。")
-    else: 
-        st.sidebar.info("`tango.csv` (初期データ) を使用しています。")
-    
+    else: # "初期データ"が選択された場合
+        # 「tango.csv (初期データ) を使用しています。」のメッセージを削除
+        if st.session_state.current_quiz is None:
+            # 初期データが選択されていて、まだクイズが開始されていない場合のみボタンを表示
+            df_filtered_initial, remaining_df_initial = quiz_app.filter_data() # フィルターを適用した状態のデータを取得
+            if not df_filtered_initial.empty and len(remaining_df_initial) > 0:
+                if st.sidebar.button("▶️ **クイズ開始**", key="sidebar_start_quiz_button"):
+                    quiz_app.load_quiz(df_filtered_initial, remaining_df_initial)
+                    st.rerun()
+            elif len(df_filtered_initial) > 0 and len(remaining_df_initial) == 0:
+                 st.sidebar.info("現在のフィルター条件の初期データはすべて回答済みです。")
+            else:
+                st.sidebar.info("現在のフィルター条件に一致する初期データがありません。")
+
     st.sidebar.markdown("---")
 
     quiz_app.offer_download()
@@ -514,14 +524,16 @@ def main():
 
     quiz_app.show_progress(df_filtered)
 
+    # メインエリアのクイズ開始ボタンは、サイドバーに配置したので不要
     if st.session_state.quiz_df.empty:
         st.info("クイズを開始するには、まず有効な学習データをロードしてください。")
     elif st.session_state.current_quiz is None:
         if len(df_filtered) > 0 and len(remaining_df) > 0:
-            st.info("データがロードされました！下のボタンをクリックしてクイズを開始してください。")
-            if st.button("▶️ クイズを開始する", key="start_quiz_button"):
-                quiz_app.load_quiz(df_filtered, remaining_df)
-                st.rerun()
+            st.info("データがロードされました！サイドバーの「クイズ開始」ボタンをクリックしてください。")
+            # メインエリアのクイズ開始ボタンを削除
+            # if st.button("▶️ クイズを開始する", key="start_quiz_button"):
+            #     quiz_app.load_quiz(df_filtered, remaining_df)
+            #     st.rerun()
         elif len(df_filtered) > 0 and len(remaining_df) == 0:
             quiz_app.show_completion()
         else:
