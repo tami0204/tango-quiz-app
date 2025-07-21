@@ -326,7 +326,7 @@ class QuizApp:
 
             if submit_button and not st.session_state.quiz_answered:
                 self._handle_answer_submission(selected_option_text, current_quiz_data)
-                st.rerun()
+                st.rerun() # フォームのsubmitボタンではst.rerun()が必要な場合があります。
 
         if st.session_state.quiz_answered:
             st.markdown(f"### {st.session_state.latest_result}")
@@ -513,7 +513,7 @@ class QuizApp:
                     
                     st.session_state.data_source_selection = "アップロード" # ファイルがアップロードされたら、確実にアップロードモードにする
                     self._load_uploaded_data() 
-                    st.rerun() 
+                    # コールバック内でst.rerun()は不要です。
                 except Exception as e:
                     st.sidebar.error(f"CSVファイルの読み込み中にエラーが発生しました。ファイル形式が正しいか確認してください: {e}")
                     st.session_state.uploaded_df_temp = None
@@ -549,6 +549,7 @@ def main():
     data_source_options_radio = ["アップロード", "初期データ"]
     
     def on_data_source_change():
+        # Streamlitはコールバック完了後に自動で再実行されるため、st.rerun()は不要です。
         if st.session_state.main_data_source_radio != st.session_state.data_source_selection:
             st.session_state.data_source_selection = st.session_state.main_data_source_radio
             
@@ -561,7 +562,7 @@ def main():
                 if st.session_state.uploaded_df_temp is not None:
                     quiz_app._load_uploaded_data()
             
-            st.rerun() 
+            # st.rerun() は削除しました。
 
     selected_source_radio = st.sidebar.radio(
         "📚 **使用するデータソースを選択**",
