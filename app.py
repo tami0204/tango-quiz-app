@@ -252,7 +252,6 @@ class QuizApp:
                     # アップロードされたファイルをすぐにアクティブなデータソースとして設定
                     st.session_state.quiz_df = self._process_df_types(uploaded_df.copy())
                     st.session_state.data_source_selection = "アップロード" # データソースをアップロードに切り替える
-                    # st.session_state.main_data_source_radio = "アップロード" # <-- この行は削除
                     self._reset_quiz_state_only()
                     st.success(f"'{uploaded_file.name}' をロードしました！")
                 except Exception as e:
@@ -271,7 +270,6 @@ class QuizApp:
             # もし現在アップロードデータが選択されていれば、初期データに戻すなどの処理も検討
             if st.session_state.data_source_selection == "アップロード":
                 st.session_state.data_source_selection = "初期データ"
-                # st.session_state.main_data_source_radio = "初期データ" # <-- この行は削除
                 self._load_initial_data()
 
 
@@ -301,9 +299,7 @@ class QuizApp:
         if st.session_state.quiz_mode == "未回答":
             if not remaining_df.empty:
                 quiz_candidates_df = remaining_df.assign(temp_weight=1) # 未回答単語はすべて等しい重み
-            # else:
-            #     st.session_state.current_quiz = None # この部分はdisplay_quizで判断するため削除
-            #     return
+            
 
         elif st.session_state.quiz_mode == "苦手":
             # 1. 不正解回数が正解回数を上回る、かつ回答済みの単語 (最優先)
@@ -326,16 +322,11 @@ class QuizApp:
                     low_correct_count_answered['temp_weight'] = low_correct_count_answered['正解回数'].apply(lambda x: 4 - x) 
                     quiz_candidates_df = pd.concat([quiz_candidates_df, low_correct_count_answered], ignore_index=True)
             
-            # if quiz_candidates_df.empty: # この部分もdisplay_quizで判断するため削除
-            #     st.session_state.current_quiz = None
-            #     return
 
         elif st.session_state.quiz_mode == "復習":
             if not df_filtered.empty:
                 quiz_candidates_df = df_filtered.assign(temp_weight=1) # 全て等しい重みでランダム出題
-            # else: # この部分もdisplay_quizで判断するため削除
-            #     st.session_state.current_quiz = None
-            #     return
+            
         
         # どのモードでもクイズ候補が全くない場合は None を設定し、display_quiz でメッセージを出す
         if quiz_candidates_df.empty:
@@ -448,8 +439,6 @@ class QuizApp:
             st.session_state.latest_correct_description = ""
             # load_quiz が None を返した場合も、再描画してメッセージを表示させる
             st.rerun() 
-            # if st.session_state.debug_mode: # 上で rerun() しているため、ここは実行されない
-            #     st.expander("デバッグ情報", expanded=False).write(st.session_state.debug_message_quiz_start)
 
         if st.session_state.current_quiz:
             st.markdown(f"### 単語: **{st.session_state.current_quiz['単語']}**")
@@ -542,8 +531,6 @@ def main():
 
     def on_data_source_change():
         """ラジオボタンが変更されたときに呼び出されるコールバック関数"""
-        # data_source_selection と main_data_source_radio は同じ値を共有する
-        # on_changeで main_data_source_radio が更新された後、data_source_selection に反映
         st.session_state.data_source_selection = st.session_state.main_data_source_radio
         
         if st.session_state.data_source_selection == "初期データ":
@@ -554,8 +541,6 @@ def main():
         else: # "アップロード"が選択された場合
             if st.session_state.uploaded_df_temp is not None:
                 quiz_app._load_uploaded_data()
-            # ファイルが選択されていない場合はアップローダーが自動的にNoneを返すので、
-            # uploaded_df_tempがない場合は何もロードしない
 
     selected_source_radio = st.sidebar.radio(
         "**データソースを選択**",
@@ -574,23 +559,15 @@ def main():
     )
     
     # ファイルアップロードのハンドリング
-    # Streamlitのライフサイクルを考慮し、UploadedFileオブジェクトが存在する場合のみ処理を継続
-    # ファイルがクリアされた場合の処理は on_data_source_change に任せるか、よりシンプルにする
     if uploaded_file is not None:
         quiz_app.handle_upload_logic(uploaded_file)
     else:
-        # uploaded_file が None で、かつ現在 "アップロード" が選択されているが
-        # 実際にデータがロードされていない（uploaded_df_tempがNone）場合、初期データに戻す
         if st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is None:
-            # ラジオボタンの値を直接変更するのではなく、on_change に任せる
-            # st.session_state.main_data_source_radio = "初期データ" # <-- ここも削除
-            st.session_state.data_source_selection = "初期データ" # これでOK
+            st.session_state.data_source_selection = "初期データ" 
             quiz_app._load_initial_data()
 
 
     # アプリケーションの初期ロード時に初期データをロード
-    # data_source_selection の初期値と on_change での処理により、
-    # このブロックの大部分は不要になるか、よりシンプルなチェックで済むはず
     if st.session_state.quiz_df is None:
         if st.session_state.data_source_selection == "初期データ":
             quiz_app._load_initial_data()
@@ -604,11 +581,11 @@ def main():
     with tab1:
         st.header("情報処理試験対策クイズ")
         
-        # クイズモードの選択
+        # クイズモードの選択 (ラベルを削除)
         st.sidebar.header("🎯 クイズモード")
         quiz_modes = ["復習", "未回答", "苦手"]
         st.session_state.quiz_mode = st.sidebar.radio(
-            "クイズモードを選択", 
+            "", # <-- ここを空文字列に変更してラベルを削除
             quiz_modes, 
             index=quiz_modes.index(st.session_state.quiz_mode) if st.session_state.quiz_mode in quiz_modes else 0,
             key="quiz_mode_radio"
