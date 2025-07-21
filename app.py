@@ -6,10 +6,10 @@ from datetime import datetime, timedelta
 import os
 import sys
 
-# pytzライブラリをインポート（もしインストールされていなければ pip install pytz でインストールしてください）
+# pytzライブラリをインポート
 import pytz
 
-# --- Streamlitページの初期設定 (変更なし) ---
+# --- Streamlitページの初期設定 ---
 st.set_page_config(
     page_title="情報処理試験対策クイズ",
     page_icon="📚",
@@ -17,7 +17,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- ここからセッション状態の初期化ロジック (変更なし) ---
+# --- ここからセッション状態の初期化ロジック ---
 defaults = {
     "quiz_df": None,
     "current_quiz": None,
@@ -49,7 +49,7 @@ for key, val in defaults.items():
 # --- ここまでセッション状態の初期化ロジック ---
 
 
-# --- カスタムCSSの適用 (変更なし) ---
+# --- カスタムCSSの適用 ---
 st.markdown("""
 <style>
     /* 全体のフォントを調整 */
@@ -188,7 +188,8 @@ st.markdown("""
 
 class QuizApp:
     def __init__(self):
-        pass
+        # 日本時間のタイムゾーンオブジェクトを事前に作成
+        self.jst_timezone = pytz.timezone('Asia/Tokyo')
 
     def _reset_quiz_state_only(self):
         st.session_state.total = 0
@@ -201,46 +202,42 @@ class QuizApp:
         st.session_state.answered_words = set()
 
     def _load_data_from_file(self, file_path):
+        """指定されたファイルパスからデータをロードし、quiz_dfを更新する"""
         try:
-            df = pd.read_csv(file_path, encoding='utf-8')
+            # UTF-8で読み込みを試行し、エラー時には Shift-JIS (CP932) で再試行
+            try:
+                df = pd.read_csv(file_path, encoding='utf-8')
+            except UnicodeDecodeError:
+                df = pd.read_csv(file_path, encoding='cp932') # Shift-JISのPythonエンコーディング名
+
             st.session_state.quiz_df = self._process_df_types(df)
-            st.success(f"'{file_path}' からデータをロードしました！")
+            # ロード成功メッセージは呼び出し元で表示
             self._reset_quiz_state_only()
             st.session_state.current_data_file = file_path
+            return True # ロード成功
         except FileNotFoundError:
             st.error(f"エラー: データファイル '{file_path}' が見つかりません。")
             st.session_state.quiz_df = None
+            return False
         except Exception as e:
             st.error(f"データファイル '{file_path}' のロード中にエラーが発生しました: {e}")
             st.session_state.quiz_df = None
+            return False
 
     def _load_initial_data(self):
-        if os.path.exists("tango_results.csv"):
-            self._load_data_from_file("tango_results.csv")
-            st.session_state.data_source_selection = "初期データ"
-            st.session_state.main_data_source_radio = "初期データ"
+        initial_results_file = "tango_results.csv"
+        if os.path.exists(initial_results_file):
+            if self._load_data_from_file(initial_results_file):
+                st.success(f"'{initial_results_file}' (結果ファイル) をロードしました！")
+                st.session_state.data_source_selection = "初期データ"
+                st.session_state.main_data_source_radio = "初期データ"
         else:
-            self._load_data_from_file("tango.csv")
+            if self._load_data_from_file("tango.csv"):
+                st.success(f"初期データ 'tango.csv' をロードしました！")
 
-    def _load_uploaded_data(self):
-        if st.session_state.uploaded_df_temp is not None:
-            uploaded_results_file = f"{os.path.splitext(st.session_state.uploaded_file_name)[0]}_results.csv"
-            if os.path.exists(uploaded_results_file):
-                self._load_data_from_file(uploaded_results_file)
-                st.session_state.data_source_selection = "アップロード"
-                st.session_state.main_data_source_radio = "アップロード"
-            else:
-                st.session_state.quiz_df = self._process_df_types(st.session_state.uploaded_df_temp.copy())
-                st.success(f"'{st.session_state.uploaded_file_name}' をロードしました！")
-                self._reset_quiz_state_only()
-
-            st.session_state.data_source_selection = "アップロード"
-            st.session_state.current_data_file = st.session_state.uploaded_file_name
-        else:
-            st.warning("アップロードされたデータが見つかりません。")
-            st.session_state.quiz_df = None
 
     def _process_df_types(self, df: pd.DataFrame) -> pd.DataFrame:
+        """データフレームの列の型を適切に処理する"""
         column_configs = {
             '〇×結果': {'type': str, 'default': '', 'replace_nan': True},
             '正解回数': {'type': int, 'default': 0, 'numeric_coerce': True},
@@ -264,53 +261,71 @@ class QuizApp:
                 if config.get('numeric_coerce'):
                     df[col_name] = pd.to_numeric(df[col_name], errors='coerce').fillna(config['default']).astype(int)
                 if config['type'] == 'datetime':
-                    # ここでタイムゾーンを考慮して読み込む
-                    # errors='coerce' は無効な日付をNaTに変換
-                    df[col_name] = pd.to_datetime(df[col_name], errors='coerce', utc=True).dt.tz_convert('Asia/Tokyo')
+                    # CSVから読み込む際にタイムゾーン情報がない場合はJSTとしてローカライズ
+                    # タイムゾーン情報がある場合はJSTに変換
+                    df[col_name] = pd.to_datetime(df[col_name], errors='coerce', utc=True)
+                    df[col_name] = df[col_name].dt.tz_convert(self.jst_timezone) # JSTに変換
                 elif config['type'] == str and not config.get('replace_nan'):
                     df[col_name] = df[col_name].astype(str)
 
         return df
 
     def handle_upload_logic(self, uploaded_file):
+        """ファイルアップロード時のロジック。重複メッセージを抑制。"""
         if uploaded_file is not None:
-            if (st.session_state.uploaded_file_name != uploaded_file.name or
-                st.session_state.uploaded_file_size != uploaded_file.size):
+            # ファイルが変更されたか、または初回アップロードかを判断
+            is_new_upload = (
+                st.session_state.uploaded_file_name != uploaded_file.name or
+                st.session_state.uploaded_file_size != uploaded_file.size or
+                st.session_state.uploaded_df_temp is None
+            )
+
+            if is_new_upload:
                 try:
-                    uploaded_df = pd.read_csv(io.StringIO(uploaded_file.getvalue().decode('utf-8')))
+                    uploaded_df_raw = uploaded_file.getvalue().decode('utf-8')
+                    uploaded_df = pd.read_csv(io.StringIO(uploaded_df_raw))
+
                     st.session_state.uploaded_df_temp = uploaded_df
                     st.session_state.uploaded_file_name = uploaded_file.name
                     st.session_state.uploaded_file_size = uploaded_file.size
 
-                    uploaded_results_file = f"{os.path.splitext(uploaded_file.name)[0]}_results.csv"
-                    if os.path.exists(uploaded_results_file):
-                        self._load_data_from_file(uploaded_results_file)
-                        st.session_state.data_source_selection = "アップロード"
-                        st.success(f"'{uploaded_results_file}' (結果ファイル) をロードしました！")
+                    uploaded_results_file_name = f"{os.path.splitext(uploaded_file.name)[0]}_results.csv"
+                    # フルパスを生成してファイルが存在するかチェック
+                    script_dir = os.path.dirname(os.path.abspath(__file__))
+                    uploaded_results_file_path = os.path.join(script_dir, uploaded_results_file_name)
+
+                    if os.path.exists(uploaded_results_file_path):
+                        # 結果ファイルが存在する場合、そのファイルをロード
+                        if self._load_data_from_file(uploaded_results_file_path):
+                            st.success(f"'{uploaded_results_file_name}' (既存の結果ファイル) をロードしました！")
                     else:
+                        # 結果ファイルが存在しない場合、アップロードされた元のファイルをロード
                         st.session_state.quiz_df = self._process_df_types(uploaded_df.copy())
                         st.success(f"'{uploaded_file.name}' をロードしました！")
                         self._reset_quiz_state_only()
 
                     st.session_state.data_source_selection = "アップロード"
-                    st.session_state.current_data_file = uploaded_file.name
+                    # 現在のデータファイル名を適切に設定
+                    st.session_state.current_data_file = uploaded_results_file_name if os.path.exists(uploaded_results_file_path) else uploaded_file.name
+
                 except Exception as e:
                     st.error(f"ファイルの読み込み中にエラーが発生しました: {e}")
                     st.session_state.uploaded_df_temp = None
                     st.session_state.uploaded_file_name = None
                     st.session_state.uploaded_file_size = None
-            else:
-                pass
+            # else: # 同一ファイルが再アップロードされた場合は、何もしない（メッセージも出さない）
         else:
+            # アップロードファイルがなくなった場合（例えば、ファイル選択がクリアされた場合）
             st.session_state.uploaded_df_temp = None
             st.session_state.uploaded_file_name = None
             st.session_state.uploaded_file_size = None
             if st.session_state.data_source_selection == "アップロード":
                 st.session_state.data_source_selection = "初期データ"
-                self._load_initial_data()
+                self._load_initial_data() # 初期データに戻す
 
     @staticmethod
     def _apply_filters(df: pd.DataFrame) -> pd.DataFrame:
+        """フィルターを適用してデータフレームを返す"""
         filtered_df = df.copy()
         if st.session_state.filter_category != "すべて":
             filtered_df = filtered_df[filtered_df["カテゴリ"] == st.session_state.filter_category]
@@ -321,6 +336,7 @@ class QuizApp:
         return filtered_df
 
     def load_quiz(self, df_filtered: pd.DataFrame, remaining_df: pd.DataFrame):
+        """次のクイズ問題をロードする"""
         if st.session_state.quiz_answered:
             st.session_state.quiz_answered = False
             st.session_state.quiz_choice_index += 1
@@ -331,14 +347,16 @@ class QuizApp:
             if not remaining_df.empty:
                 quiz_candidates_df = remaining_df.assign(temp_weight=1)
         elif st.session_state.quiz_mode == "苦手":
+            # 不正解回数が正解回数を上回るもの
             struggled_answered = df_filtered[
                 (df_filtered["〇×結果"] != '') &
                 (df_filtered["不正解回数"] > df_filtered["正解回数"])
             ].copy()
             if not struggled_answered.empty:
-                struggled_answered['temp_weight'] = struggled_answered['不正解回数'] + 5
+                struggled_answered['temp_weight'] = struggled_answered['不正解回数'] + 5 # 重みを高く
                 quiz_candidates_df = pd.concat([quiz_candidates_df, struggled_answered], ignore_index=True)
 
+            # 正解回数が3回以下のもの（かつ、上記と重複しないもの）
             low_correct_count_answered = df_filtered[
                 (df_filtered['〇×結果'] != '') &
                 (df_filtered["正解回数"] <= 3)
@@ -346,9 +364,10 @@ class QuizApp:
             if not low_correct_count_answered.empty:
                 low_correct_count_answered = low_correct_count_answered[~low_correct_count_answered['単語'].isin(quiz_candidates_df['単語'])]
                 if not low_correct_count_answered.empty:
-                    low_correct_count_answered['temp_weight'] = low_correct_count_answered['正解回数'].apply(lambda x: 4 - x)
+                    low_correct_count_answered['temp_weight'] = low_correct_count_answered['正解回数'].apply(lambda x: 4 - x) # 正解が少ないほど重く
                     quiz_candidates_df = pd.concat([quiz_candidates_df, low_correct_count_answered], ignore_index=True)
         elif st.session_state.quiz_mode == "復習":
+            # 全体を対象（回答済みか未回答かは問わない）
             if not df_filtered.empty:
                 quiz_candidates_df = df_filtered.assign(temp_weight=1)
 
@@ -356,13 +375,14 @@ class QuizApp:
             st.session_state.current_quiz = None
             return
 
+        # 重複する単語を除外し、重みでソートして、上位からランダム選択
         quiz_candidates_df = quiz_candidates_df.sort_values(by='temp_weight', ascending=False).drop_duplicates(subset='単語', keep='first')
         if quiz_candidates_df.empty:
             st.session_state.current_quiz = None
             return
 
         weights = quiz_candidates_df['temp_weight'].tolist()
-        if all(w == 0 for w in weights):
+        if all(w == 0 for w in weights) or sum(weights) == 0: # 重みがすべて0の場合の対策
             selected_quiz_row = quiz_candidates_df.sample(n=1).iloc[0]
         else:
             selected_quiz_row = quiz_candidates_df.sample(n=1, weights=weights).iloc[0]
@@ -387,18 +407,22 @@ class QuizApp:
         st.session_state.debug_message_answer_end = ""
 
     def _save_quiz_data_to_csv(self):
+        """クイズデータをCSVファイルに保存する"""
         try:
             save_directory = os.path.dirname(os.path.abspath(__file__))
-            base_name, ext = os.path.splitext(st.session_state.current_data_file)
+            base_name = os.path.splitext(st.session_state.current_data_file)[0]
             save_path = os.path.join(save_directory, f"{os.path.basename(base_name)}_results.csv")
-            
-            # CSV保存時もタイムゾーンを考慮してUTCに変換してから保存
+
             df_to_save = st.session_state.quiz_df.copy()
-            # タイムゾーン情報を持つ列をUTCに変換
+            # CSV保存時もタイムゾーンを考慮してUTCに変換し、tz情報を削除して保存
             for col in ['最終実施日時', '次回実施予定日時']:
-                if col in df_to_save.columns and df_to_save[col].dt.tz is not None:
-                    df_to_save[col] = df_to_save[col].dt.tz_convert('UTC').dt.tz_localize(None) # UTC変換後、tz情報を削除して保存
+                if col in df_to_save.columns and pd.api.types.is_datetime64_any_dtype(df_to_save[col]):
+                    if df_to_save[col].dt.tz is not None:
+                        df_to_save[col] = df_to_save[col].dt.tz_convert('UTC').dt.tz_localize(None) # UTC変換後、tz情報を削除
             
+            # NaNを空文字列に変換して保存（Excelでの表示を考慮）
+            df_to_save = df_to_save.fillna('')
+
             df_to_save.to_csv(save_path, index=False, encoding='utf-8')
             if st.session_state.debug_mode:
                 st.info(f"DEBUG: データが '{save_path}' に保存されました。")
@@ -408,6 +432,7 @@ class QuizApp:
                 st.error(f"DEBUG: データ保存エラー: {e}")
 
     def _handle_answer_submission(self, user_answer):
+        """ユーザーの回答を処理し、データを更新する"""
         if st.session_state.current_quiz:
             correct_answer_description = st.session_state.current_quiz["説明"]
             term = st.session_state.current_quiz["単語"]
@@ -428,10 +453,9 @@ class QuizApp:
                     st.session_state.quiz_df.loc[idx, '不正解回数'] += 1
                     st.session_state.latest_result = "不正解…💧"
 
-                # ★★★ ここを修正 ★★★
                 # 現在の日本時間を取得し、タイムゾーン情報を付与
-                jst = pytz.timezone('Asia/Tokyo')
-                current_jst_time = datetime.now(jst) # 明示的にJSTの現在時刻を取得
+                # self.jst_timezone を使用
+                current_jst_time = datetime.now(self.jst_timezone) 
 
                 st.session_state.quiz_df.loc[idx, '最終実施日時'] = current_jst_time
 
@@ -450,6 +474,7 @@ class QuizApp:
                     st.session_state.debug_message_error = f"DEBUG: エラー: 単語 '{term}' がDataFrameに見つかりません。"
 
     def display_quiz(self, df_filtered: pd.DataFrame, remaining_df: pd.DataFrame):
+        """クイズ表示ロジック"""
         if st.session_state.debug_mode:
             st.expander("デバッグ情報", expanded=False).write(st.session_state.debug_message_quiz_start)
 
@@ -514,16 +539,17 @@ class QuizApp:
                 st.expander("デバッグ情報", expanded=False).write("DEBUG: current_quiz is None.")
 
     def display_data_viewer(self):
+        """データビューアの表示とCSVダウンロード機能"""
         if st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
-            # データフレームを表示する前に、タイムゾーン付きの列を日本時間に変換して表示
+            # データフレームを表示する前に、タイムゾーン付きの列を日本時間に変換して表示形式を整える
             df_display = st.session_state.quiz_df.copy()
             for col in ['最終実施日時', '次回実施予定日時']:
                 if col in df_display.columns and pd.api.types.is_datetime64_any_dtype(df_display[col]):
                     # タイムゾーン情報がない場合はJSTとしてローカライズし、ある場合はJSTに変換
                     if df_display[col].dt.tz is None:
-                        df_display[col] = df_display[col].dt.tz_localize('Asia/Tokyo', ambiguous='infer')
+                        df_display[col] = df_display[col].dt.tz_localize(self.jst_timezone, ambiguous='infer')
                     else:
-                        df_display[col] = df_display[col].dt.tz_convert('Asia/Tokyo')
+                        df_display[col] = df_display[col].dt.tz_convert(self.jst_timezone)
                     # 表示形式を整える (例: 2025-07-21 19:48:57)
                     df_display[col] = df_display[col].dt.strftime('%Y-%m-%d %H:%M:%S')
 
@@ -541,14 +567,17 @@ class QuizApp:
                             df_to_export[col] = df_to_export[col].dt.tz_convert('UTC').dt.tz_localize(None)
                         # フォーマットを統一してCSVに書き出す
                         df_to_export[col] = df_to_export[col].dt.strftime('%Y-%m-%d %H:%M:%S')
+                
+                # NaNを空文字列に変換してCSVに保存
+                df_to_export = df_to_export.fillna('')
 
                 df_to_export.to_csv(output, index=False, encoding='utf_8_sig')
                 return output.getvalue().encode('utf-8')
 
             csv_data = convert_df_to_csv(st.session_state.quiz_df)
 
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%SS")
-            file_name = f"TANGO{timestamp}.csv"
+            timestamp = datetime.now(self.jst_timezone).strftime("%Y%m%d_%H%M%SS") # ダウンロードファイル名もJSTで
+            file_name = f"TANGO_{timestamp}.csv"
 
             st.download_button(
                 label="現在のデータをCSVでダウンロード",
@@ -559,17 +588,17 @@ class QuizApp:
         else:
             st.info("表示するデータがありません。")
 
-# アプリケーションの実行 (変更なし)
+# アプリケーションの実行
 def main():
     quiz_app = QuizApp()
 
+    # 初期ロードロジック
     if st.session_state.quiz_df is None:
         if st.session_state.data_source_selection == "初期データ":
             quiz_app._load_initial_data()
         elif st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is not None:
             quiz_app._load_uploaded_data()
-        elif st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is None:
-            st.info("アップロードされたデータがありません。")
+        # else: st.info("アップロードされたデータがありません。") は呼び出し元のdisplay_quizで対処
 
     st.sidebar.header("📚 データソース")
     data_source_options_radio = ["初期データ", "アップロード"]
@@ -578,14 +607,17 @@ def main():
         st.session_state.data_source_selection = st.session_state.main_data_source_radio
         if st.session_state.data_source_selection == "初期データ":
             quiz_app._load_initial_data()
+            # 初期データ選択時はアップロード関連のセッション状態をクリア
             st.session_state.uploaded_df_temp = None
             st.session_state.uploaded_file_name = None
             st.session_state.uploaded_file_size = None
-        else:
+        else: # アップロードが選択された場合
             if st.session_state.uploaded_df_temp is not None:
-                quiz_app._load_uploaded_data()
+                quiz_app._load_uploaded_data() # 既にアップロード済みのデータをロード
             else:
-                 st.info("ファイルをアップロードしてください。")
+                 # ここでは具体的なロードは行わず、ファイルアップローダーの表示を促す
+                 st.info("CSVファイルをアップロードしてください。")
+                 st.session_state.quiz_df = None # データがない状態にする
 
     selected_source_radio = st.sidebar.radio(
         "**データソースを選択**",
@@ -603,10 +635,11 @@ def main():
         disabled=(st.session_state.data_source_selection == "初期データ")
     )
 
+    # uploaded_fileが選択されたら処理
     if uploaded_file is not None:
         quiz_app.handle_upload_logic(uploaded_file)
-    else:
-        pass
+    # else: # ファイルが選択されていない場合、またはクリアされた場合
+    #     # handle_upload_logic内で処理されるため、ここでの明示的な処理は不要
 
     tab1, tab2 = st.tabs(["クイズ", "データビューア"])
 
