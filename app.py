@@ -20,7 +20,7 @@ def set_custom_css():
 
         /* サイドバーの余白調整 */
         .stSidebar > div:first-child {
-            padding-top: 20px;
+            padding-top: 5px !important; /* サイドバー全体の上部パディングをさらに減らす */
             padding-bottom: 20px;
         }
         .stSidebar .stRadio div { /* ラジオボタンの選択肢間の余白を調整 */
@@ -28,44 +28,40 @@ def set_custom_css():
             padding-bottom: 5px;
         }
         .stSidebar h2, .stSidebar h3 { /* サイドバーの見出しの上下余白 */
-            margin-top: 1.5rem;
+            margin-top: 0.5rem; /* 見出しの上部余白を減らす */
             margin-bottom: 0.8rem;
         }
         
-        /* ボタンのスタイル調整（幅をデフォルトに戻す） */
-        div.stButton > button {
-            /* width: 100%; この行を削除またはコメントアウト */
-            margin-bottom: 10px; /* ボタン間の余白 */
-        }
-        /* ダウンロードボタンのリセットボタンが隣接するように調整 */
-        .stDownloadButton, .stButton {
-            margin-right: 5px; /* ボタン間の右マージンを調整 */
-        }
-        .stDownloadButton button, .stButton button {
-            min-width: unset; /* ボタンの最小幅をリセット */
-            width: auto; /* 幅をコンテンツに合わせる */
+        /* ボタンのスタイル調整：幅を内容に合わせ、横並びにする */
+        div.stButton > button, .stDownloadButton button {
+            width: auto !important; /* 幅を自動調整 */
+            min-width: unset !important; /* 最小幅の制約をなくす */
             padding-left: 1rem; /* 左右のパディング */
             padding-right: 1rem;
+            margin-bottom: 10px; /* ボタンの下余白 */
+            margin-right: 5px; /* ボタン間の右マージン */
+            display: inline-flex; /* Flexboxで横並びにする */
+            justify-content: center; /* 中央揃え */
+            align-items: center; /* 中央揃え */
         }
-
 
         /* 水平線（HR）のスタイル調整 */
         hr {
-            margin-top: 1.5rem;
-            margin-bottom: 1.5rem;
-            border-top: 1px solid rgba(0, 0, 0, 0.1); /* 線の色を薄く */
+            margin-top: 1.0rem; /* HRの上下余白を調整 */
+            margin-bottom: 1.0rem;
+            border-top: 1px solid rgba(0, 0, 0, 0.1);
         }
         
         /* フォーム内の余白調整 */
         .stForm {
-            padding: 15px; /* フォームのパディング */
-            border: 1px solid rgba(0, 0, 0, 0.05); /* フォームの境界線を薄く */
-            border-radius: 5px; /* フォームの角を丸く */
+            padding: 15px;
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            border-radius: 5px;
             margin-bottom: 20px;
         }
 
         /* セクション間の余白を統一 */
-        .st-emotion-cache-1r6dmzm { /* st.containerなどの自動生成されるクラス名。変更される可能性あり */
+        .st-emotion-cache-1r6dmzm {
             margin-bottom: 20px; 
         }
 
@@ -75,20 +71,18 @@ def set_custom_css():
             margin-bottom: 10px;
         }
 
-        /* プログレスバーの上のラベルを非表示に（デフォルトで表示される場合） */
+        /* プログレスバーの上のラベルを非表示に */
         .stProgress > div > div > div > div {
-            font-size: 0; /* ラベルを非表示にする */
+            font-size: 0;
         }
 
-        /* ファイルアップローダーのスタイル調整 (Streamlit 1.x系で動作) */
-        /* アップローダーエリア全体のパディングを減らす */
+        /* ファイルアップローダーのスタイル調整 */
         .stFileUploader {
             padding-top: 0 !important;
             padding-bottom: 0 !important;
-            margin-top: -10px; /* 少し上に詰める */
-            margin-bottom: 10px; /* 下に少し余白 */
+            margin-top: -10px;
+            margin-bottom: 10px;
         }
-        /* アップローダーのヘルプテキスト（'CSVファイルをアップロード'）の非表示 */
         .stFileUploader label {
             display: none;
         }
@@ -128,13 +122,11 @@ class QuizApp:
         
         self.initial_df = self._process_df_types(original_df.copy())
 
-        # アプリ起動時の quiz_df 初期ロードロジックを、セッション状態に基づいて実行
         if st.session_state.quiz_df is None:
             if st.session_state.data_source_selection == "初期データ":
                 self._load_initial_data()
             elif st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is not None:
                 self._load_uploaded_data()
-            # アップロードが選択されているがファイルがない場合は quiz_df は None のまま
 
     def _initialize_session(self):
         """セッション状態をデフォルト値で初期化します。既に存在する場合は更新しません。"""
@@ -506,11 +498,12 @@ class QuizApp:
             df_to_save['次回実施予定日時'] = df_to_save['次回実施予定日時'].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
 
         csv_quiz_data = df_to_save.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-        return csv_quiz_data, file_name # ボタン生成のためにデータを返す
+        return csv_quiz_data, file_name 
 
     def handle_upload_logic(self, uploaded_file):
         """アップロードされたファイルの処理ロジックをカプセル化。"""
         if uploaded_file is not None:
+            # ファイル名とサイズが変わった場合のみ再処理
             if st.session_state.uploaded_file_name != uploaded_file.name or \
                st.session_state.get('uploaded_file_size') != uploaded_file.size: 
                 try:
@@ -601,10 +594,9 @@ def main():
     if uploaded_file is not None:
         quiz_app.handle_upload_logic(uploaded_file)
 
-    st.sidebar.markdown("---") 
-
     # ダウンロードとリセットボタンを横並びにする
-    col_dl, col_reset = st.sidebar.columns(2)
+    # st.sidebar.columns(2) を使用して、明示的に2列レイアウトにする
+    col_dl, col_reset = st.sidebar.columns([0.6, 0.4]) # 幅の比率を調整
     with col_dl:
         if st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
             csv_data, file_name = quiz_app.offer_download()
@@ -616,11 +608,12 @@ def main():
                 key="download_button"
             )
     with col_reset:
-        if st.sidebar.button("🔄 **学習履歴をリセット**", help="現在使用しているデータソースの学習の進捗（正解/不正解回数、回答済み単語）を初期状態に戻します。", key="reset_button"):
+        # widthをautoに設定しているため、ボタンのテキストが短い場合は狭くなる
+        if st.button("🔄 **学習履歴をリセット**", help="現在使用しているデータソースの学習の進捗（正解/不正解回数、回答済み単語）を初期状態に戻します。", key="reset_button"):
             quiz_app._reset_learning_history() 
 
-    st.sidebar.markdown("---") 
-    
+    st.sidebar.markdown("---") # 設定とデータの区切り
+
     st.sidebar.header("クイズの絞り込み")
     
     df_filtered = pd.DataFrame()
@@ -641,11 +634,11 @@ def main():
         elif len(df_filtered) == 0: 
              st.sidebar.info("現在のフィルター条件に一致する単語がありません。フィルターを変更してください。")
     
-    st.sidebar.markdown("---") 
+    st.sidebar.markdown("---") # 絞り込みと進捗の区切り
 
     quiz_app.show_progress(df_filtered)
 
-    st.markdown("---") 
+    st.markdown("---") # メインコンテンツと統計の区切り
     
     # --- メインコンテンツエリアのメッセージ制御 ---
     if st.session_state.quiz_df is None or st.session_state.quiz_df.empty:
