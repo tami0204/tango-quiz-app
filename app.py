@@ -419,8 +419,9 @@ class QuizApp:
                 
                 st.session_state.quiz_df.loc[idx, '最終実施日時'] = datetime.now()
                 st.session_state.total += 1
-                st.session_state.latest_correct_description = correct_answer_description
                 st.session_state.answered_words.add(term) # 回答済み単語に追加
+                st.session_state.latest_correct_description = correct_answer_description
+
 
                 if st.session_state.debug_mode:
                     st.session_state.debug_message_answer_update = f"DEBUG: '{term}'の正解回数: {st.session_state.quiz_df.loc[idx, '正解回数']}, 不正解回数: {st.session_state.quiz_df.loc[idx, '不正解回数']}"
@@ -586,7 +587,11 @@ def main():
         
         # クイズモードの選択
         st.sidebar.header("🎯 クイズモード") # このヘッダーは残します
-        quiz_modes = ["復習", "未回答", "苦手"]
+        
+        # --- クイズモードの順序を変更 ---
+        quiz_modes = ["未回答", "苦手", "復習"]
+        # --- 変更ここまで ---
+
         st.session_state.quiz_mode = st.sidebar.radio(
             "", # <-- ラベルテキストを空に
             quiz_modes, 
