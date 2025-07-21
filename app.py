@@ -65,6 +65,29 @@ st.markdown("""
     h2, h3, h4 {
         color: #333333;
     }
+    /* --- フォントサイズ調整: h3 (単語), p (説明文), stRadio (選択肢) --- */
+    h3 {
+        font-size: 1.75em; /* 元のh3より少し小さく */
+    }
+    p { /* 説明文などの標準的な段落のフォントサイズ */
+        font-size: 0.95em; 
+    }
+    /* 選択肢ボタンのスタイル */
+    .stRadio > label > div {
+        background-color: #F0F2F6; /* 薄いグレーの背景 */
+        padding: 10px 15px; /* パディングを少し減らす */
+        margin-bottom: 7px; /* マージンを少し減らす */
+        border-radius: 8px;
+        border: 1px solid #DDDDDD;
+        transition: all 0.2s ease;
+        font-size: 0.9em; /* 選択肢のフォントサイズを小さく */
+    }
+    .stRadio > label > div:hover {
+        background-color: #E0E2E6; /* ホバーで少し濃く */
+        border-color: #C0C0C0;
+    }
+    /* --- フォントサイズ調整ここまで --- */
+
     /* ボタンのスタイル */
     .stButton>button {
         width: 100%;
@@ -81,20 +104,6 @@ st.markdown("""
         background-color: #2671c6;
         border-color: #2671c6;
         color: white;
-    }
-    /* 選択肢ボタンのスタイル */
-    .stRadio > label > div {
-        background-color: #F0F2F6; /* 薄いグレーの背景 */
-        padding: 12px 15px;
-        margin-bottom: 8px;
-        border-radius: 8px;
-        border: 1px solid #DDDDDD;
-        transition: all 0.2s ease;
-        font-size: 15px;
-    }
-    .stRadio > label > div:hover {
-        background-color: #E0E2E6; /* ホバーで少し濃く */
-        border-color: #C0C0C0;
     }
     /* 正解・不正解時の背景色 */
     .correct-answer-feedback {
@@ -127,7 +136,7 @@ st.markdown("""
         background-color: #5a6268;
         border-color: #5a6268;
     }
-    /* 統計情報 */
+    /* 統計情報コンテナ */
     .metric-container {
         border: 1px solid #DDDDDD;
         border-radius: 8px;
@@ -136,15 +145,22 @@ st.markdown("""
         margin-bottom: 10px;
         background-color: #FFFFFF;
     }
-    .metric-value {
-        font-size: 2em;
+    /* サイドバー内のメトリックコンテナの背景色を調整 */
+    [data-testid="stSidebar"] .metric-container {
+        background-color: #e9ecef; /* サイドバーの背景色と調和するよう調整 */
+    }
+    /* --- サイドバーの件数表示文字サイズをさらに調整 --- */
+    [data-testid="stSidebar"] .metric-value {
+        font-size: 1.5em; /* 2em から 1.5em に縮小 */
         font-weight: bold;
         color: #2F80ED;
     }
-    .metric-label {
-        font-size: 0.9em;
+    [data-testid="stSidebar"] .metric-label {
+        font-size: 0.8em; /* 0.9em から 0.8em に縮小 */
         color: #666666;
     }
+    /* --- サイドバーの件数表示文字サイズ調整ここまで --- */
+
     /* データフレーム表示 */
     .stDataFrame {
         border: 1px solid #DDDDDD;
@@ -155,11 +171,10 @@ st.markdown("""
         padding-top: 2rem;
         padding-bottom: 2rem;
     }
-    /* --- 追加/修正されたCSS (st.radioのラベルを完全に非表示にする) --- */
+    /* st.radio のラベルを完全に非表示にする */
     div[data-testid="stRadio"] > label[data-testid="stWidgetLabel"] {
         display: none !important;
     }
-    /* --- ここまで追加/修正されたCSS --- */
 </style>
 """, unsafe_allow_html=True)
 
@@ -415,27 +430,9 @@ class QuizApp:
 
     def display_quiz(self, df_filtered: pd.DataFrame, remaining_df: pd.DataFrame):
         """クイズのUIを表示します。"""
-        # カラム数を3から4に変更
-        col1, col2, col3, col4 = st.columns(4) 
-
-        # フィルタリングされた単語の総数を計算
-        filtered_count = len(df_filtered)
-
-        with col1:
-            st.markdown(f"<div class='metric-container'><div class='metric-value'>{st.session_state.correct}</div><div class='metric-label'>正解数</div></div>", unsafe_allow_html=True)
-        with col2:
-            st.markdown(f"<div class='metric-container'><div class='metric-value'>{st.session_state.total}</div><div class='metric-label'>回答数</div></div>", unsafe_allow_html=True)
-        with col3:
-            # 未回答の単語数を表示
-            st.markdown(f"<div class='metric-container'><div class='metric-value'>{len(remaining_df)}</div><div class='metric-label'>未回答単語</div></div>", unsafe_allow_html=True)
-        with col4:
-            # 新しく追加する「対象単語数」を表示
-            st.markdown(f"<div class='metric-container'><div class='metric-value'>{filtered_count}</div><div class='metric-label'>対象単語数</div></div>", unsafe_allow_html=True)
-            
         # デバッグメッセージの表示 (デバッグモードが有効な場合のみ)
         if st.session_state.debug_mode:
             st.expander("デバッグ情報", expanded=False).write(st.session_state.debug_message_quiz_start)
-
 
         # クイズの開始・リロードボタン
         if st.button("クイズ開始 / 次の問題", key="start_quiz_button"):
@@ -446,6 +443,7 @@ class QuizApp:
             st.rerun() 
 
         if st.session_state.current_quiz:
+            # 単語の表示
             st.markdown(f"### 単語: **{st.session_state.current_quiz['単語']}**")
             st.caption(f"カテゴリ: {st.session_state.current_quiz['カテゴリ']} / 分野: {st.session_state.current_quiz['分野']}")
             
@@ -634,6 +632,18 @@ def main():
         else:
             st.sidebar.info("データがロードされていません。") 
         
+        # 各件数をサイドバーに表示
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("📊 クイズ進捗")
+        
+        # フィルタリングされた単語の総数を計算
+        filtered_count = len(df_filtered)
+
+        st.sidebar.markdown(f"<div class='metric-container'><div class='metric-value'>{st.session_state.correct}</div><div class='metric-label'>正解数</div></div>", unsafe_allow_html=True)
+        st.sidebar.markdown(f"<div class='metric-container'><div class='metric-value'>{st.session_state.total}</div><div class='metric-label'>回答数</div></div>", unsafe_allow_html=True)
+        st.sidebar.markdown(f"<div class='metric-container'><div class='metric-value'>{len(remaining_df)}</div><div class='metric-label'>未回答単語</div></div>", unsafe_allow_html=True)
+        st.sidebar.markdown(f"<div class='metric-container'><div class='metric-value'>{filtered_count}</div><div class='metric-label'>対象単語数</div></div>", unsafe_allow_html=True)
+
         # デバッグモードの切り替え
         st.sidebar.markdown("---")
         st.sidebar.subheader("開発者ツール")
