@@ -20,6 +20,10 @@ class QuizApp:
             "filter_category": "すべて",
             "filter_field": "すべて",
             "filter_level": "すべて", # 'シラバス改定有無'フィルター用
+            "debug_message_quiz_start": "", # DEBUGメッセージをセッション状態に保持
+            "debug_message_answer_update": "", # DEBUGメッセージをセッション状態に保持
+            "debug_message_error": "", # DEBUGメッセージをセッション状態に保持
+            "debug_message_answer_end": "", # DEBUGメッセージをセッション状態に保持
         }
         self._initialize_session()
         
@@ -106,6 +110,13 @@ class QuizApp:
         st.session_state.current_quiz = None # 現在のクイズをリセット
         st.session_state.quiz_answered = False # 回答済みフラグをリセット
         st.session_state.quiz_choice_index = 0 # フォームのキーもリセット
+
+        # デバッグメッセージもリセット
+        st.session_state.debug_message_quiz_start = ""
+        st.session_state.debug_message_answer_update = ""
+        st.session_state.debug_message_error = ""
+        st.session_state.debug_message_answer_end = ""
+
 
         st.success("✅ セッションをリセットし、学習データを初期化しました。")
         st.rerun()
@@ -211,6 +222,13 @@ class QuizApp:
         # load_quizが呼ばれるたびにquiz_choice_indexをインクリメントし、フォームのキーをユニークにする
         st.session_state.quiz_choice_index += 1 
 
+        # DEBUGメッセージを更新 (常時表示のためセッション状態に保存)
+        st.session_state.debug_message_quiz_start = f"DEBUG: 新しいクイズがロードされました: '{st.session_state.current_quiz['単語']}'"
+        st.session_state.debug_message_answer_update = "" # 次の問題がロードされたらリセット
+        st.session_state.debug_message_error = "" # 次の問題がロードされたらリセット
+        st.session_state.debug_message_answer_end = "" # 次の問題がロードされたらリセット
+
+
     def display_quiz(self, df_filtered: pd.DataFrame, remaining_df: pd.DataFrame):
         """クイズを表示し、ユーザーの回答を処理します。"""
         current_quiz_data = st.session_state.current_quiz
@@ -234,15 +252,13 @@ class QuizApp:
             )
             submit_button = st.form_submit_button("✅ 答え合わせ", disabled=st.session_state.quiz_answered)
 
-            # デバッグ出力: ボタンが押されたことを確認
-            if submit_button:
-                st.write(f"DEBUG: '答え合わせ' ボタンが押されました。quiz_answered={st.session_state.quiz_answered}")
-
             # フォームが送信され、かつまだ回答されていない場合のみ処理
             if submit_button and not st.session_state.quiz_answered:
+                st.session_state.debug_message_quiz_start = f"DEBUG: '答え合わせ' ボタンが押されました。選択肢='{selected_option_text}'"
                 self._handle_answer_submission(selected_option_text, current_quiz_data)
                 st.rerun() # 回答処理後、画面を更新して結果を表示
 
+        # 回答後の表示とデバッグ情報
         if st.session_state.quiz_answered:
             st.markdown(f"### {st.session_state.latest_result}")
             if st.session_state.latest_result.startswith("❌"):
@@ -257,6 +273,33 @@ class QuizApp:
                 f'</a>',
                 unsafe_allow_html=True
             )
+            
+            # --- ここに、常に表示したいデバッグメッセージを追加します ---
+            st.markdown("---")
+            st.subheader("現在のデバッグ情報（固定表示）")
+            if st.session_state.debug_message_quiz_start:
+                st.write(st.session_state.debug_message_quiz_start)
+            if st.session_state.debug_message_answer_update:
+                st.write(st.session_state.debug_message_answer_update)
+            if st.session_state.debug_message_error:
+                st.error(st.session_state.debug_message_error) # エラーメッセージは赤字で表示
+            if st.session_state.debug_message_answer_end:
+                st.write(st.session_state.debug_message_answer_end)
+
+            st.write(f"**クイズ回答済みフラグ:** `{st.session_state.quiz_answered}`")
+            st.write(f"**合計問題数:** `{st.session_state.total}`")
+            st.write(f"**正解数:** `{st.session_state.correct}`")
+
+            # 現在の単語の正解回数と不正解回数を表示
+            current_word_stats_df = st.session_state.quiz_df[st.session_state.quiz_df['単語'] == current_quiz_data['単語']]
+            if not current_word_stats_df.empty:
+                st.write(f"**現在の単語の正解回数:** `{current_word_stats_df['正解回数'].iloc[0]}`")
+                st.write(f"**現在の単語の不正解回数:** `{current_word_stats_df['不正解回数'].iloc[0]}`")
+            else:
+                st.write(f"**現在の単語の統計:** N/A (DataFrameに見つかりません)")
+            
+            st.markdown("---")
+            # ------------------------------------------------------------------
             
             st.markdown("---")
             col1, col2 = st.columns(2)
@@ -274,7 +317,8 @@ class QuizApp:
 
     def _handle_answer_submission(self, selected_option_text: str, current_quiz_data: dict):
         """ユーザーの回答を処理し、結果を更新します。"""
-        st.write(f"DEBUG: _handle_answer_submission 開始。選択肢='{selected_option_text}'")
+        # DEBUGメッセージをセッション状態に保存
+        st.session_state.debug_message_quiz_start = f"DEBUG: _handle_answer_submission 開始。選択肢='{selected_option_text}'"
 
         st.session_state.total += 1
         st.session_state.answered_words.add(current_quiz_data["単語"])
@@ -311,15 +355,17 @@ class QuizApp:
             # 次回実施予定日時は、今回は最終実施日時と同じに設定（間隔学習などのロジックは別途実装が必要）
             temp_df.at[idx, '次回実施予定日時'] = datetime.datetime.now() 
 
-            st.write(f"DEBUG: '{word}' の学習履歴を更新しました。正解回数={temp_df.at[idx, '正解回数']}, 不正解回数={temp_df.at[idx, '不正解回数']}")
+            st.session_state.debug_message_answer_update = f"DEBUG: '{word}' の学習履歴を更新しました。正解回数={temp_df.at[idx, '正解回数']}, 不正解回数={temp_df.at[idx, '不正解回数']}"
+            st.session_state.debug_message_error = "" # エラーがあればリセット
         else:
-            st.write(f"DEBUG: エラー - 単語 '{word}' がDataFrameに見つかりませんでした。")
+            st.session_state.debug_message_error = f"DEBUG: エラー - 単語 '{word}' がDataFrameに見つかりませんでした。"
+            st.session_state.debug_message_answer_update = "" # 更新メッセージをリセット
 
 
         st.session_state.quiz_df = temp_df # 更新されたDataFrameをセッションに保存
 
         st.session_state.quiz_answered = True
-        st.write(f"DEBUG: _handle_answer_submission 終了。quiz_answered={st.session_state.quiz_answered}, total={st.session_state.total}, correct={st.session_state.correct}")
+        st.session_state.debug_message_answer_end = f"DEBUG: _handle_answer_submission 終了。quiz_answered={st.session_state.quiz_answered}, total={st.session_state.total}, correct={st.session_state.correct}"
 
     def show_progress(self, df_filtered: pd.DataFrame):
         """学習の進捗を表示します。"""
@@ -422,6 +468,13 @@ class QuizApp:
                 st.session_state.filter_category = "すべて"
                 st.session_state.filter_field = "すべて"
                 st.session_state.filter_level = "すべて"
+                
+                # デバッグメッセージもリセット
+                st.session_state.debug_message_quiz_start = ""
+                st.session_state.debug_message_answer_update = ""
+                st.session_state.debug_message_error = ""
+                st.session_state.debug_message_answer_end = ""
+
 
                 st.success("✅ 学習データを正常にアップロードしました！")
                 st.rerun()
@@ -434,7 +487,7 @@ def main():
     st.set_page_config(layout="wide", page_title="IT用語クイズアプリ", page_icon="📝")
 
     # CSVファイルがapp.pyと同じディレクトリに存在することを確認
-    csv_path = os.path.join(os.path.dirname(__file__), 'tango.csv') # ここを修正しました！
+    csv_path = os.path.join(os.path.dirname(__file__), 'tango.csv')
     if not os.path.exists(csv_path):
         st.error(f"エラー: tango.csv が見つかりません。パス: {csv_path}")
         st.stop()
