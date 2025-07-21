@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import random
 import os
-import plotly.express as px
+import plotly.express as px # この行は残しておきますが、使用しない部分を削除します
 import datetime
 
 class QuizApp:
@@ -296,15 +296,15 @@ class QuizApp:
         progress_percent = (answered_filtered_words / total_filtered_words) if total_filtered_words > 0 else 0
         st.progress(progress_percent, text=f"回答済み: {answered_filtered_words} / {total_filtered_words} 単語")
 
-        # 進捗グラフ
-        progress_data = {
-            '状態': ['回答済み', '未回答'],
-            '単語数': [answered_filtered_words, total_filtered_words - answered_filtered_words]
-        }
-        progress_df = pd.DataFrame(progress_data)
-        fig = px.pie(progress_df, values='単語数', names='状態', title='学習進捗',
-                     color_discrete_sequence=px.colors.qualitative.Pastel)
-        st.plotly_chart(fig, use_container_width=True)
+        # 進捗グラフ (この部分は削除しました)
+        # progress_data = {
+        #     '状態': ['回答済み', '未回答'],
+        #     '単語数': [answered_filtered_words, total_filtered_words - answered_filtered_words]
+        # }
+        # progress_df = pd.DataFrame(progress_data)
+        # fig = px.pie(progress_df, values='単語数', names='状態', title='学習進捗',
+        #              color_discrete_sequence=px.colors.qualitative.Pastel)
+        # st.plotly_chart(fig, use_container_width=True)
 
     def show_completion(self):
         """すべての問題が終了した際に表示するメッセージ。"""
@@ -417,7 +417,7 @@ class QuizApp:
 
         st.markdown("---")
 
-        self.show_progress(df_filtered)
+        self.show_progress(df_filtered) # 学習進捗はプログレスバーのみ
 
         if st.session_state.current_quiz is None:
             self.load_quiz(df_filtered, remaining_df)
