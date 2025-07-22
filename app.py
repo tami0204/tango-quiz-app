@@ -3,6 +3,7 @@ import pandas as pd
 import random
 import io
 from datetime import datetime, timedelta
+import time # ★★★ 追加 ★★★
 
 # Streamlitページの初期設定
 st.set_page_config(
@@ -460,6 +461,26 @@ class QuizApp:
                     st.write(f"  最終実施日時: {updated_row_status['最終実施日時']}")
                     st.write(f"DEBUG: Before rerun. quiz_df.head():")
                     st.dataframe(st.session_state.quiz_df.head())
+                
+                # ★★★ ここから修正・追加 ★★★
+                # 回答フィードバックとスピナーの表示
+                feedback_placeholder = st.empty()
+                if st.session_state.latest_result == "正解！🎉":
+                    feedback_placeholder.markdown(f"<div class='correct-answer-feedback'>{st.session_state.latest_result}</div>", unsafe_allow_html=True)
+                else:
+                    feedback_placeholder.markdown(f"<div class='incorrect-answer-feedback'>{st.session_state.latest_result}</div>", unsafe_allow_html=True)
+                feedback_placeholder.info(f"正解は: **{st.session_state.latest_correct_description}**")
+
+                with st.spinner("次の問題をロード中..."):
+                    time.sleep(1.5) # 1.5秒待つ
+
+                feedback_placeholder.empty() # フィードバックを消す
+                self.load_quiz() # 次の問題をロード
+                st.session_state.latest_result = "" # 結果表示をリセット
+                st.session_state.latest_correct_description = ""
+                st.rerun() # UIを更新
+                # ★★★ ここまで修正・追加 ★★★
+
             else:
                 if st.session_state.debug_mode:
                     st.session_state.debug_message_error = f"DEBUG: エラー: 単語 '{term}' がDataFrameに見つかりません。"
@@ -469,39 +490,32 @@ class QuizApp:
         if st.session_state.debug_mode:
             st.expander("デバッグ情報", expanded=False).write(st.session_state.debug_message_quiz_start)
 
-        # クイズの開始・リロードボタン
-        if st.button("クイズ開始 / 次の問題", key="start_quiz_button"):
-            self.load_quiz() 
-            st.session_state.latest_result = "" 
-            st.session_state.latest_correct_description = ""
-            st.rerun() 
+        # ★★★ 「クイズ開始 / 次の問題」ボタンを削除 ★★★
+        # if st.button("クイズ開始 / 次の問題", key="start_quiz_button"):
+        #    self.load_quiz() 
+        #    st.session_state.latest_result = "" 
+        #    st.session_state.latest_correct_description = ""
+        #    st.rerun() 
+        # ★★★ 削除ここまで ★★★
+
+        # アプリ起動時にまだ問題がロードされていない場合は、最初の問題をロード
+        # または、フィルター変更などでcurrent_quizがリセットされた場合
+        if st.session_state.current_quiz is None and st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
+            self.load_quiz()
+            st.rerun() # 初回ロードを反映
 
         if st.session_state.current_quiz:
             st.markdown(f"### 単語: **{st.session_state.current_quiz['単語']}**")
             st.caption(f"カテゴリ: {st.session_state.current_quiz['カテゴリ']} / 分野: {st.session_state.current_quiz['分野']}")
             
+            # ★★★ ここから修正：回答済みの場合の表示ロジックは _handle_answer_submission 内に移されたため、削除または簡略化 ★★★
+            # quiz_answeredは、_handle_answer_submission内でTrueになり、次のload_quizでFalseに戻る
+            # ここでは回答中の状態（ラジオボタン表示）と、次の問題ロード中の状態（スピナー表示）を区別する
             if st.session_state.quiz_answered:
-                if st.session_state.latest_result == "正解！🎉":
-                    st.markdown(f"<div class='correct-answer-feedback'>{st.session_state.latest_result}</div>", unsafe_allow_html=True)
-                else:
-                    st.markdown(f"<div class='incorrect-answer-feedback'>{st.session_state.latest_result}</div>", unsafe_allow_html=True)
-                st.info(f"正解は: **{st.session_state.latest_correct_description}**")
-                description_html = f"""
-                <div style="background-color: #f0f8ff; padding: 15px; border-left: 5px solid #2F80ED; margin-top: 15px; border-radius: 5px;">
-                    <p><strong>単語の説明:</strong> {st.session_state.current_quiz['説明']}</p>
-                    <p><strong>試験区分:</strong> {st.session_state.current_quiz.get('試験区分', 'N/A')}</p>
-                    <p><strong>午後記述での使用例:</strong> {st.session_state.current_quiz.get('午後記述での使用例', 'N/A')}</p>
-                    <p><strong>使用理由／文脈:</strong> {st.session_state.current_quiz.get('使用理由／文脈', 'N/A')}</p>
-                    <p><strong>シラバス改定有無:</strong> {st.session_state.current_quiz.get('シラバス改定有無', 'N/A')}</p>
-                    <p><strong>改定の意図・影響:</strong> {st.session_state.current_quiz.get('改定の意図・影響', 'N/A')}</p>
-                </div>
-                """
-                st.markdown(description_html, unsafe_allow_html=True)
-
-                if st.session_state.debug_mode:
-                    st.expander("デバッグ情報", expanded=False).write(st.session_state.debug_message_answer_update)
-
-            else:
+                # _handle_answer_submission内で処理が完了し、既にst.rerun()が呼ばれているはず
+                # このブロックは、事実上ほとんど実行されないか、再実行される前にスキップされる
+                pass # この部分は実質的に通過しない、または直後にrerunされるため不要
+            else: # 未回答の状態、つまり回答を選択させる状態
                 user_answer = st.radio(
                     "この単語の説明として正しいものはどれですか？",
                     st.session_state.current_quiz["choices"],
@@ -509,8 +523,8 @@ class QuizApp:
                     key=f"quiz_choice_{st.session_state.quiz_choice_index}"
                 )
                 if user_answer:
+                    # _handle_answer_submission内でst.rerun()が呼ばれるため、ここでは不要
                     self._handle_answer_submission(user_answer)
-                    st.rerun()
         else: 
             if st.session_state.quiz_df is None or st.session_state.quiz_df.empty:
                 st.info("データがロードされていません。サイドバーからデータソースを選択またはアップロードしてください。")
