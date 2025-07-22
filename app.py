@@ -455,7 +455,8 @@ class QuizApp:
                     st.session_state.latest_result = "正解！🎉"
                     st.session_state.correct += 1
                 else:
-                    st.session_state.quiz_df.loc[idx, ['〇×結果', '不正解回数', '最終実施日時']] = ['×', st.session_state.quiz_df.loc[idx, '不正解回'] + 1, datetime.now()]
+                    # ここを修正: '不正解回' を '不正解回数' に変更
+                    st.session_state.quiz_df.loc[idx, ['〇×結果', '不正解回数', '最終実施日時']] = ['×', st.session_state.quiz_df.loc[idx, '不正解回数'] + 1, datetime.now()]
                     st.session_state.latest_result = "不正解…💧"
                 
                 st.session_state.total += 1
