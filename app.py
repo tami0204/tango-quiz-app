@@ -200,6 +200,9 @@ class QuizApp:
         st.session_state.quiz_answered = False
         st.session_state.quiz_choice_index = 0 # 追加：クイズ選択肢のインデックスもリセット
         st.session_state.answered_words = set()
+        # ここで quiz_df の '〇×結果' をリセットすることが重要
+        if st.session_state.quiz_df is not None:
+            st.session_state.quiz_df['〇×結果'] = ''
 
     def _load_initial_data(self):
         """初期データをロードし、セッション状態に設定します。"""
@@ -256,6 +259,11 @@ class QuizApp:
                     df[col_name] = pd.to_datetime(df[col_name], errors='coerce')
                 elif config['type'] == str and not config.get('replace_nan'):
                     df[col_name] = df[col_name].astype(str)
+        
+        # '〇×結果' カラムは、アップロードされたデータに既存の値があっても、
+        # ここで常に空文字列に初期化することで、「未回答」の状態を保証します。
+        # クイズ結果はセッション内で管理し、保存時にのみファイルに書き出す設計です。
+        df['〇×結果'] = '' 
 
         return df
 
@@ -326,7 +334,8 @@ class QuizApp:
         
         if st.session_state.quiz_mode == "未回答":
             if not remaining_df.empty:
-                quiz_candidates_df = remaining_df.assign(temp_weight=1) # 未回答単語はすべて等しい重み
+                # '〇×結果' が空の単語を候補とする
+                quiz_candidates_df = remaining_df[remaining_df['〇×結果'] == ''].assign(temp_weight=1)
             
 
         elif st.session_state.quiz_mode == "苦手":
@@ -361,6 +370,7 @@ class QuizApp:
             st.session_state.current_quiz = None
             return
 
+        # 重複を排除し、重み順にソート（必要であれば）
         quiz_candidates_df = quiz_candidates_df.sort_values(by='temp_weight', ascending=False).drop_duplicates(subset='単語', keep='first')
 
         # 上記処理で quiz_candidates_df が空になる可能性があるので再度チェック
@@ -413,10 +423,8 @@ class QuizApp:
                 idx = idx[0]
                 st.session_state.quiz_answered = True
                 
-                # '〇×結果'を更新 (正解なら'〇'、不正解なら'×')
-                # 未回答だった場合のみ更新することで、既に回答済みの単語の結果を上書きしない
-                if st.session_state.quiz_df.loc[idx, '〇×結果'] == '': 
-                    st.session_state.quiz_df.loc[idx, '〇×結果'] = '〇' if user_answer == correct_answer_description else '×'
+                # '〇×結果'を常に最新の回答結果で更新
+                st.session_state.quiz_df.loc[idx, '〇×結果'] = '〇' if user_answer == correct_answer_description else '×'
                 
                 # 正解回数/不正解回数を更新
                 if user_answer == correct_answer_description:
@@ -649,6 +657,7 @@ def main():
             # ここでフィルターを適用し、常に最新の df_filtered と remaining_df を取得
             # staticmethodになったので、クラス名から直接呼び出します
             df_filtered = QuizApp._apply_filters(st.session_state.quiz_df) 
+            # '〇×結果'が空のものを「未回答」とみなす
             remaining_df = df_filtered[df_filtered["〇×結果"] == '']
         else:
             st.info("データがロードされていません。") 
