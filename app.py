@@ -18,7 +18,8 @@ st.set_page_config(
 # セッション状態のデフォルト値
 defaults = {
     "quiz_df": None,
-    "current_quiz": None,
+    "current_quiz": None, # 現在出題中のクイズ（選択肢表示用）
+    "current_quiz_for_display": None, # 回答後に詳細を表示するためのクイズ情報
     "total": 0,
     "correct": 0,
     "latest_result": "",
@@ -197,6 +198,7 @@ class QuizApp:
         st.session_state.latest_result = ""
         st.session_state.latest_correct_description = ""
         st.session_state.current_quiz = None
+        st.session_state.current_quiz_for_display = None # リセット時に表示用クイズ情報もクリア
         st.session_state.quiz_answered = False
         st.session_state.quiz_choice_index = 0 
         st.session_state.processing_answer = False # 処理中フラグもリセット
@@ -325,9 +327,10 @@ class QuizApp:
 
         # 前のクイズが回答済みの場合にのみインデックスを進める
         # これにより、UIの再描画ごとにインデックスが進むのを防ぐ
-        if st.session_state.quiz_answered: 
-            st.session_state.quiz_answered = False 
-            st.session_state.quiz_choice_index += 1 
+        # ※ quiz_answered のリセットは、回答選択時に行うため、ここでは行わない
+        # if st.session_state.quiz_answered: 
+        #     st.session_state.quiz_answered = False 
+        st.session_state.quiz_choice_index += 1 
 
         quiz_candidates_df = pd.DataFrame()
         
@@ -405,6 +408,9 @@ class QuizApp:
         st.session_state.processing_answer = True
 
         if st.session_state.current_quiz:
+            # 回答直前の問題を display_quiz 用に保存
+            st.session_state.current_quiz_for_display = st.session_state.current_quiz.copy()
+
             correct_answer_description = st.session_state.current_quiz["説明"]
             term = st.session_state.current_quiz["単語"]
             
@@ -469,37 +475,38 @@ class QuizApp:
             st.caption(f"カテゴリ: {st.session_state.current_quiz['カテゴリ']} / 分野: {st.session_state.current_quiz['分野']}")
             
             # 処理中でない場合のみラジオボタンを表示
-            if not st.session_state.processing_answer:
-                user_answer = st.radio(
-                    "この単語の説明として正しいものはどれですか？",
-                    st.session_state.current_quiz["choices"],
-                    index=None, 
-                    key=f"quiz_choice_{st.session_state.quiz_choice_index}",
-                    disabled=st.session_state.processing_answer # 回答処理中は無効化
-                )
-                if user_answer:
-                    self._handle_answer_submission(user_answer)
-            else:
-                # 処理中の場合は何も表示しない（st.infoやst.spinnerが_handle_answer_submissionで表示される）
-                pass
-
-            # 回答フィードバックと詳細表示は、回答済みかつ処理中でない場合にのみ表示
-            if st.session_state.quiz_answered and not st.session_state.processing_answer:
+            # ここで user_answer が取得されたら、前回のフィードバックをクリアする準備をする
+            user_answer = st.radio(
+                "この単語の説明として正しいものはどれですか？",
+                st.session_state.current_quiz["choices"],
+                index=None, 
+                key=f"quiz_choice_{st.session_state.quiz_choice_index}",
+                disabled=st.session_state.processing_answer # 回答処理中は無効化
+            )
+            if user_answer:
+                # 新しい回答が検出されたら、前回のフィードバック表示をクリア
+                st.session_state.quiz_answered = False 
+                st.session_state.current_quiz_for_display = None # 表示用クイズ情報もクリア
+                self._handle_answer_submission(user_answer)
+            
+            # --- ここからが変更点: 回答フィードバックと詳細情報の表示ロジック ---
+            # quiz_answeredがTrue、かつ表示用のクイズ情報がある場合に表示
+            if st.session_state.quiz_answered and st.session_state.current_quiz_for_display:
                 if st.session_state.latest_result == "正解！🎉":
                     st.markdown(f"<div class='correct-answer-feedback'>{st.session_state.latest_result}</div>", unsafe_allow_html=True)
                 else:
                     st.markdown(f"<div class='incorrect-answer-feedback'>{st.session_state.latest_result}</div>", unsafe_allow_html=True)
                 st.info(f"正解は: **{st.session_state.latest_correct_description}**")
                 
-                # 詳細情報の表示
+                # 詳細情報の表示 (current_quiz_for_display を使用)
                 description_html = f"""
                 <div style="background-color: #f0f8ff; padding: 15px; border-left: 5px solid #2F80ED; margin-top: 15px; border-radius: 5px;">
-                    <p><strong>単語の説明:</strong> {st.session_state.current_quiz['説明']}</p>
-                    <p><strong>試験区分:</strong> {st.session_state.current_quiz.get('試験区分', 'N/A')}</p>
-                    <p><strong>午後記述での使用例:</strong> {st.session_state.current_quiz.get('午後記述での使用例', 'N/A')}</p>
-                    <p><strong>使用理由／文脈:</strong> {st.session_state.current_quiz.get('使用理由／文脈', 'N/A')}</p>
-                    <p><strong>シラバス改定有無:</strong> {st.session_state.current_quiz.get('シラバス改定有無', 'N/A')}</p>
-                    <p><strong>改定の意図・影響:</strong> {st.session_state.current_quiz.get('改定の意図・影響', 'N/A')}</p>
+                    <p><strong>単語の説明:</strong> {st.session_state.current_quiz_for_display['説明']}</p>
+                    <p><strong>試験区分:</strong> {st.session_state.current_quiz_for_display.get('試験区分', 'N/A')}</p>
+                    <p><strong>午後記述での使用例:</strong> {st.session_state.current_quiz_for_display.get('午後記述での使用例', 'N/A')}</p>
+                    <p><strong>使用理由／文脈:</strong> {st.session_state.current_quiz_for_display.get('使用理由／文脈', 'N/A')}</p>
+                    <p><strong>シラバス改定有無:</strong> {st.session_state.current_quiz_for_display.get('シラバス改定有無', 'N/A')}</p>
+                    <p><strong>改定の意図・影響:</strong> {st.session_state.current_quiz_for_display.get('改定の意図・影響', 'N/A')}</p>
                 </div>
                 """
                 st.markdown(description_html, unsafe_allow_html=True)
@@ -508,12 +515,11 @@ class QuizApp:
                     st.expander("デバッグ情報", expanded=False).write(st.session_state.debug_message_answer_update)
 
         else: 
-            if st.session_state.quiz_df is None or st.session_state.quiz_df.empty:
-                st.info("データがロードされていません。サイドバーからデータソースを選択またはアップロードしてください。")
-            elif st.session_state.processing_answer:
+            # ... (中略) ...
+            if st.session_state.processing_answer:
                 # 処理中の場合は何もしない（スピナーが表示されているはず）
                 pass
-            else:
+            else: # 問題がない場合のメッセージ
                 current_df_filtered = QuizApp._apply_filters(st.session_state.quiz_df)
                 current_remaining_df = current_df_filtered[current_df_filtered["〇×結果"] == '']
 
