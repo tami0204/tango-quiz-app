@@ -198,7 +198,7 @@ class QuizApp:
         st.session_state.latest_correct_description = ""
         st.session_state.current_quiz = None
         st.session_state.quiz_answered = False
-        st.session_state.quiz_choice_index = 0
+        st.session_state.quiz_choice_index = 0 # 追加：クイズ選択肢のインデックスもリセット
         st.session_state.answered_words = set()
 
     def _load_initial_data(self):
@@ -414,10 +414,8 @@ class QuizApp:
                 st.session_state.quiz_answered = True
                 
                 # '〇×結果'を更新 (正解なら'〇'、不正解なら'×')
-                # 未回答のラジオボタンが選択された場合でも、回答が済んだと見なすため、
-                # ここで '〇×結果' を更新し、answered_words に追加します。
-                # ただし、未回答以外のラジオボタンの仕様は変更しないため、正解/不正解のロジックは維持。
-                if st.session_state.quiz_df.loc[idx, '〇×結果'] == '': # 未回答だった場合のみ減算対象
+                # 未回答だった場合のみ更新することで、既に回答済みの単語の結果を上書きしない
+                if st.session_state.quiz_df.loc[idx, '〇×結果'] == '': 
                     st.session_state.quiz_df.loc[idx, '〇×結果'] = '〇' if user_answer == correct_answer_description else '×'
                 
                 # 正解回数/不正解回数を更新
@@ -532,7 +530,7 @@ class QuizApp:
             
             # 現在の日時を取得し、ファイル名に組み込む
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            file_name = f"TANGO{timestamp}.csv" # ここを修正
+            file_name = f"TANGO_{timestamp}.csv" # ここを修正
 
             st.download_button(
                 label="現在のデータをCSVでダウンロード",
