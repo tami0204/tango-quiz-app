@@ -36,7 +36,7 @@ defaults = {
     "quiz_mode": "復習",
     "main_data_source_radio": "初期データ",
     "force_initial_load": True, # アプリ初回起動時にのみ初期データをロードするためのフラグ
-    "processing_answer": False # 回答処理中フラグ
+    "processing_answer": False # 回答処理中フラグ: Trueの間はUIをブロックする
 }
 
 for key, val in defaults.items():
@@ -199,6 +199,7 @@ class QuizApp:
         st.session_state.current_quiz = None
         st.session_state.quiz_answered = False
         st.session_state.quiz_choice_index = 0 
+        st.session_state.processing_answer = False # 処理中フラグもリセット
         
         # '〇×結果' をリセットするために、DataFrameを明示的に更新
         if st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
@@ -283,7 +284,6 @@ class QuizApp:
                     st.session_state.quiz_df = self._process_df_types(uploaded_df.copy())
                     st.session_state.data_source_selection = "アップロード" 
                     self._reset_quiz_state_only() 
-                    st.success(f"'{uploaded_file.name}' をロードしました！")
                     st.rerun() 
                 except Exception as e:
                     st.error(f"ファイルの読み込み中にエラーが発生しました: {e}")
@@ -323,6 +323,8 @@ class QuizApp:
         df_filtered = QuizApp._apply_filters(st.session_state.quiz_df)
         remaining_df_for_quiz = df_filtered[df_filtered["〇×結果"] == '']
 
+        # 前のクイズが回答済みの場合にのみインデックスを進める
+        # これにより、UIの再描画ごとにインデックスが進むのを防ぐ
         if st.session_state.quiz_answered: 
             st.session_state.quiz_answered = False 
             st.session_state.quiz_choice_index += 1 
@@ -434,15 +436,17 @@ class QuizApp:
                     st.write(f"DEBUG: Before rerun. quiz_df.head():")
                     st.dataframe(st.session_state.quiz_df.head())
                 
-                # 回答処理中のUI表示
+                # 回答処理中のUI表示を強制するために、UIをクリアしてからスピナーを表示
+                st.empty() # これにより、現在のコンテンツがクリアされる
                 st.info("回答を処理中...")
                 with st.spinner("次の問題を準備中..."):
-                    # 短時間の待機（StreamlitがUI更新を処理するのを待つ）
-                    time.sleep(0.5) 
+                    time.sleep(1) # 短時間の待機（StreamlitがUI更新を処理するのを待つ）
+                    # ここで次の問題をロード（重要！）
+                    self.load_quiz() 
                 
-                # 回答処理中のフラグを解除
+                # 回答処理中のフラグを解除し、UIを更新
                 st.session_state.processing_answer = False
-                st.rerun() # UIを更新し、次の問題へ
+                st.rerun() 
             else:
                 if st.session_state.debug_mode:
                     st.session_state.debug_message_error = f"DEBUG: エラー: 単語 '{term}' がDataFrameに見つかりません。"
@@ -455,6 +459,7 @@ class QuizApp:
             st.expander("デバッグ情報", expanded=False).write(st.session_state.debug_message_quiz_start)
 
         # アプリ起動時やフィルター変更後など、current_quizがまだ設定されていない場合に、最初の問題をロード
+        # ただし、回答処理中はロードしない
         if st.session_state.current_quiz is None and st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty and not st.session_state.processing_answer:
             self.load_quiz()
             st.rerun() # 初回ロードを反映
@@ -475,16 +480,18 @@ class QuizApp:
                 if user_answer:
                     self._handle_answer_submission(user_answer)
             else:
-                # 処理中の場合は何も表示しない（またはメッセージを表示）
-                pass # st.spinner が既に表示されているため、ここでは何もしない
+                # 処理中の場合は何も表示しない（st.infoやst.spinnerが_handle_answer_submissionで表示される）
+                pass
 
-            # 回答フィードバックと詳細表示
+            # 回答フィードバックと詳細表示は、回答済みかつ処理中でない場合にのみ表示
             if st.session_state.quiz_answered and not st.session_state.processing_answer:
                 if st.session_state.latest_result == "正解！🎉":
                     st.markdown(f"<div class='correct-answer-feedback'>{st.session_state.latest_result}</div>", unsafe_allow_html=True)
                 else:
                     st.markdown(f"<div class='incorrect-answer-feedback'>{st.session_state.latest_result}</div>", unsafe_allow_html=True)
                 st.info(f"正解は: **{st.session_state.latest_correct_description}**")
+                
+                # 詳細情報の表示
                 description_html = f"""
                 <div style="background-color: #f0f8ff; padding: 15px; border-left: 5px solid #2F80ED; margin-top: 15px; border-radius: 5px;">
                     <p><strong>単語の説明:</strong> {st.session_state.current_quiz['説明']}</p>
