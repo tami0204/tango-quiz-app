@@ -34,6 +34,7 @@ defaults = {
     "debug_mode": False,
     "quiz_mode": "復習", # quiz_mode もここで初期化すること
     "main_data_source_radio": "初期データ", # ラジオボタンのキーと同期
+    "force_initial_load": True # アプリ初回起動時にのみ初期データをロードするためのフラグ
 }
 
 for key, val in defaults.items():
@@ -198,20 +199,23 @@ class QuizApp:
         st.session_state.quiz_choice_index = 0 
         
         # '〇×結果' をリセットするために、DataFrameを明示的に更新
-        if st.session_state.quiz_df is not None:
+        if st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
             # SettingWithCopyWarningを避けるために .loc を使用
+            # 既存のDataFrameの列を直接上書きすることで、セッション状態の変更をStreamlitに認識させる
             st.session_state.quiz_df.loc[:, '〇×結果'] = '' 
             st.session_state.quiz_df.loc[:, '正解回数'] = 0
             st.session_state.quiz_df.loc[:, '不正解回数'] = 0
             st.session_state.quiz_df.loc[:, '最終実施日時'] = pd.NaT # 日付もリセット
 
-            # debug: st.sidebar.write(f"DEBUG: _reset_quiz_state_only: quiz_df['〇×結果'] reset. First 5: {st.session_state.quiz_df['〇×結果'].head()}")
+            if st.session_state.debug_mode:
+                st.sidebar.write(f"DEBUG: _reset_quiz_state_only: quiz_df['〇×結果'] reset. First 5: {st.session_state.quiz_df['〇×結果'].head()}")
 
 
     def _load_initial_data(self):
         """初期データをロードし、セッション状態に設定します。"""
         try:
             df = pd.read_csv("tango.csv", encoding='utf-8')
+            # _process_df_typesは、DataFrameのコピーを返すべき
             st.session_state.quiz_df = self._process_df_types(df)
             st.success("初期データをロードしました！")
             self._reset_quiz_state_only() # ロード後にクイズ状態をリセット
@@ -225,6 +229,7 @@ class QuizApp:
     def _load_uploaded_data(self):
         """アップロードされたデータをロードし、セッション状態に設定します。"""
         if st.session_state.uploaded_df_temp is not None:
+            # _process_df_typesは、DataFrameのコピーを返すべき
             st.session_state.quiz_df = self._process_df_types(st.session_state.uploaded_df_temp.copy())
             st.success(f"'{st.session_state.uploaded_file_name}' をロードしました！")
             self._reset_quiz_state_only() # ロード後にクイズ状態をリセット
@@ -233,11 +238,9 @@ class QuizApp:
             st.session_state.quiz_df = None # データがない場合はNoneを設定
 
     def _process_df_types(self, df: pd.DataFrame) -> pd.DataFrame:
-        """DataFrameに対して、必要なカラムの型変換と初期化を適用します。
-        このメソッドでは、ロードされたデータフレームをStreamlitのセッション状態に保存する前に、
-        既存の〇×結果、正解・不正解回数、最終実施日時をリセットします。
-        これにより、アップロードされた過去のデータにこれらの情報が含まれていても、
-        クイズ開始時には常にクリーンな状態から始められます。
+        """DataFrameに対して、必要なカラムの型変換と、存在しないカラムの初期化を適用します。
+        この関数は、新しくデータがロードされたときにのみ呼び出されるべきであり、
+        クイズの進捗（〇×結果など）をリセットする役割は持ちません。
         """
         # 必ず新しいDataFrameのコピーを操作するようにする
         df_processed = df.copy() 
@@ -253,12 +256,15 @@ class QuizApp:
             '試験区分': {'type': str, 'default': ''},
             '出題確率（推定）': {'type': str, 'default': ''}, 
             '改定の意図・影響': {'type': str, 'default': ''},
+            '〇×結果': {'type': str, 'default': '', 'replace_nan': True} # 〇×結果もここで定義
         }
 
         for col_name, config in column_configs.items():
             if col_name not in df_processed.columns:
+                # カラムが存在しない場合のみ追加し、デフォルト値を設定
                 df_processed[col_name] = config['default']
             else:
+                # 既存のカラムに対しては型変換とNaN処理のみ
                 if config.get('replace_nan'):
                     df_processed[col_name] = df_processed[col_name].astype(str).replace('nan', '')
                 if config.get('numeric_coerce'):
@@ -267,22 +273,6 @@ class QuizApp:
                     df_processed[col_name] = pd.to_datetime(df_processed[col_name], errors='coerce')
                 elif config['type'] == str and not config.get('replace_nan'):
                     df_processed[col_name] = df_processed[col_name].astype(str)
-        
-        # '〇×結果' カラムが存在しない場合は追加し、存在するなら強制的に空文字列で初期化
-        if '〇×結果' not in df_processed.columns:
-            df_processed['〇×結果'] = ''
-        else:
-            df_processed['〇×結果'] = '' # 既存の列も強制的に空に
-
-        # 正解回数、不正解回数もここでリセットする（念のため）
-        if '正解回数' not in df_processed.columns: df_processed['正解回数'] = 0
-        else: df_processed['正解回数'] = 0
-        
-        if '不正解回数' not in df_processed.columns: df_processed['不正解回数'] = 0
-        else: df_processed['不正解回数'] = 0
-
-        if '最終実施日時' not in df_processed.columns: df_processed['最終実施日時'] = pd.NaT
-        else: df_processed['最終実施日時'] = pd.NaT
         
         return df_processed
 
@@ -304,10 +294,10 @@ class QuizApp:
                     st.session_state.uploaded_file_size = uploaded_file.size
                     
                     # アップロードされたファイルをすぐにアクティブなデータソースとして設定
-                    # ここで _process_df_types が呼び出され、'〇×結果' がリセットされる
+                    # _process_df_typesはここで呼び出され、新しいDataFrameを返す
                     st.session_state.quiz_df = self._process_df_types(uploaded_df.copy())
                     st.session_state.data_source_selection = "アップロード" # データソースをアップロードに切り替える
-                    self._reset_quiz_state_only() # クイズ状態もリセット
+                    self._reset_quiz_state_only() # ロード後にクイズ状態をリセット
                     st.success(f"'{uploaded_file.name}' をロードしました！")
                     st.rerun() # データソース変更を即時反映
                 except Exception as e:
@@ -455,7 +445,6 @@ class QuizApp:
                     st.session_state.latest_result = "正解！🎉"
                     st.session_state.correct += 1
                 else:
-                    # ここを修正: '不正解回' を '不正解回数' に変更
                     st.session_state.quiz_df.loc[idx, ['〇×結果', '不正解回数', '最終実施日時']] = ['×', st.session_state.quiz_df.loc[idx, '不正解回数'] + 1, datetime.now()]
                     st.session_state.latest_result = "不正解…💧"
                 
@@ -463,7 +452,14 @@ class QuizApp:
                 st.session_state.latest_correct_description = correct_answer_description
 
                 if st.session_state.debug_mode:
-                    st.session_state.debug_message_answer_update = f"DEBUG: '{term}'の正解回数: {st.session_state.quiz_df.loc[idx, '正解回数']}, 不正解回数: {st.session_state.quiz_df.loc[idx, '不正解回数']}. 〇×結果: {st.session_state.quiz_df.loc[idx, '〇×結果']}"
+                    updated_row_status = st.session_state.quiz_df.loc[idx]
+                    st.write(f"DEBUG: Answer Submitted. Row for '{term}':")
+                    st.write(f"  〇×結果: {updated_row_status['〇×結果']}")
+                    st.write(f"  正解回数: {updated_row_status['正解回数']}")
+                    st.write(f"  不正解回数: {updated_row_status['不正解回数']}")
+                    st.write(f"  最終実施日時: {updated_row_status['最終実施日時']}")
+                    st.write(f"DEBUG: Before rerun. quiz_df.head():")
+                    st.dataframe(st.session_state.quiz_df.head())
             else:
                 if st.session_state.debug_mode:
                     st.session_state.debug_message_error = f"DEBUG: エラー: 単語 '{term}' がDataFrameに見つかりません。"
@@ -576,6 +572,12 @@ class QuizApp:
 def main():
     quiz_app = QuizApp()
 
+    # アプリケーションの初期ロード時に初期データをロード
+    # `force_initial_load`フラグを使って、初回ロード時のみ実行
+    if st.session_state.quiz_df is None and st.session_state.force_initial_load:
+        quiz_app._load_initial_data()
+        st.session_state.force_initial_load = False # ロード後はFalseに設定
+
     # サイドバーのデータソース選択
     st.sidebar.header("📚 データソース")
     data_source_options_radio = ["初期データ", "アップロード"]
@@ -625,14 +627,6 @@ def main():
              st.session_state.data_source_selection = "初期データ"
              quiz_app._load_initial_data()
              st.rerun()
-
-
-    # アプリケーションの初期ロード時に初期データをロード
-    if st.session_state.quiz_df is None:
-        if st.session_state.data_source_selection == "初期データ":
-            quiz_app._load_initial_data()
-        elif st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is not None:
-            quiz_app._load_uploaded_data()
 
 
     # タブの作成
