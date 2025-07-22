@@ -400,8 +400,9 @@ class QuizApp:
 
     def _process_answer(self):
         """ユーザーが「回答する」ボタンをクリックしたときに実行される処理。"""
-        st.session_state.processing_answer = True # 処理開始
-        
+        # 処理中の表示を即座に行うために、ここでは st.rerun() は呼ばない
+        # Streamlitはセッション状態の変更を検知して自動的に再実行する
+
         if st.session_state.current_quiz and st.session_state.selected_answer:
             st.session_state.latest_answered_quiz = st.session_state.current_quiz.copy() # 直前のクイズ情報を保持
 
@@ -425,8 +426,7 @@ class QuizApp:
                 st.session_state.latest_correct_description = correct_answer_description
                 
                 st.session_state.quiz_state = "answered" # 回答済み状態へ遷移
-                st.session_state.processing_answer = False # 処理終了
-                st.rerun() 
+                st.session_state.processing_answer = False # 処理終了（ここではUIは描画されない。Streamlitの再実行を待つ）
             else:
                 if st.session_state.debug_mode:
                     st.session_state.debug_message_error = f"DEBUG: エラー: 単語 '{term}' がDataFrameに見つかりません。"
@@ -436,13 +436,18 @@ class QuizApp:
 
     def _go_to_next_quiz(self):
         """「次へ」ボタンクリックで次のクイズをロードする処理。"""
-        st.session_state.processing_answer = True # 処理開始
-        with st.spinner("次の問題を準備中..."):
-            time.sleep(0.5) # 短時間の待機
-            self.load_quiz() 
+        # ここも st.rerun() は呼ばず、セッション状態の変更をトリガーにする
+        # UIの切り替わりをスムーズにするために、current_quiz を一旦 None に設定
+        st.session_state.current_quiz = None 
+        st.session_state.latest_answered_quiz = None # 前回の回答表示をクリア
+        st.session_state.selected_answer = None # 選択肢もクリア
         st.session_state.quiz_state = "question" # 問題表示状態へ遷移
-        st.session_state.processing_answer = False # 処理終了
-        st.rerun()
+        
+        # 次の問題をロード
+        self.load_quiz() 
+        # load_quiz() の中で quiz_choice_index もインクリメントされる
+        
+        st.session_state.processing_answer = False # 処理終了（ここではUIは描画されない。Streamlitの再実行を待つ）
 
 
     def display_quiz(self, df_filtered: pd.DataFrame, remaining_df: pd.DataFrame):
@@ -451,12 +456,13 @@ class QuizApp:
             st.expander("デバッグ情報", expanded=False).write(st.session_state.debug_message_quiz_start)
 
         # アプリ起動時やフィルター変更後など、current_quizがまだ設定されていない場合に、最初の問題をロード
-        if st.session_state.current_quiz is None and st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
+        # quiz_state が "question" のときのみロードを試みる
+        if st.session_state.current_quiz is None and st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty and st.session_state.quiz_state == "question":
             if not st.session_state.processing_answer: # 処理中でなければロード
                 self.load_quiz()
-                st.session_state.quiz_state = "question" # 状態を「問題表示中」に設定
-                st.rerun() # 初回ロードを反映
+                # ここでは st.rerun() を呼ばず、Streamlitの自然な再実行に任せる
 
+        # 問題が存在する場合のみUIを表示
         if st.session_state.current_quiz:
             st.markdown(f"### 単語: **{st.session_state.current_quiz['単語']}**")
             st.caption(f"カテゴリ: {st.session_state.current_quiz['カテゴリ']} / 分野: {st.session_state.current_quiz['分野']}")
@@ -475,19 +481,18 @@ class QuizApp:
                 # 回答が選択されたら「回答する」ボタンを有効化
                 col1, col2 = st.columns(2)
                 with col1:
-                    if st.button(
+                    st.button(
                         "回答する", 
                         on_click=self._process_answer, 
                         disabled=(st.session_state.selected_answer is None or st.session_state.processing_answer)
-                    ):
-                        pass # on_clickで処理が実行される
+                    )
                 with col2:
                     # ここに「次へ」ボタンを配置しない
                     pass
 
-
             elif st.session_state.quiz_state == "answered":
                 # 回答済み状態: ラジオボタンは無効化して表示、フィードバックと「次へ」ボタンを表示
+                # current_quiz の選択肢を表示し、selected_answer をデフォルトにする
                 st.radio(
                     "この単語の説明として正しいものはどれですか？",
                     st.session_state.current_quiz["choices"],
@@ -521,8 +526,7 @@ class QuizApp:
                     # ここに「回答する」ボタンを配置しない
                     pass
                 with col2:
-                    if st.button("次へ", on_click=self._go_to_next_quiz, disabled=st.session_state.processing_answer):
-                        pass # on_clickで処理が実行される
+                    st.button("次へ", on_click=self._go_to_next_quiz, disabled=st.session_state.processing_answer)
                 
                 if st.session_state.debug_mode:
                     st.expander("デバッグ情報", expanded=False).write(st.session_state.debug_message_answer_update)
