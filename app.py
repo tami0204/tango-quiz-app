@@ -8,7 +8,7 @@ import time
 # Streamlitページの初期設定
 st.set_page_config(
     page_title="情報処理試験対策クイズ",
-    page_icon="📚",
+    page_icon="�",
     layout="centered", # 'centered' or 'wide'
     initial_sidebar_state="expanded" # 'auto', 'expanded', 'collapsed'
 )
@@ -243,6 +243,10 @@ class QuizApp:
         df_processed = df.copy() 
         
         column_configs = {
+            '単語': {'type': str, 'default': ''}, # 単語列の追加
+            '説明': {'type': str, 'default': ''}, # 説明列の追加
+            'カテゴリ': {'type': str, 'default': ''}, # カテゴリ列の追加
+            '分野': {'type': str, 'default': ''}, # 分野列の追加
             '正解回数': {'type': int, 'default': 0, 'numeric_coerce': True},
             '不正解回数': {'type': int, 'default': 0, 'numeric_coerce': True},
             '最終実施日時': {'type': 'datetime', 'default': pd.NaT},
@@ -255,6 +259,13 @@ class QuizApp:
             '改定の意図・影響': {'type': str, 'default': ''},
             '〇×結果': {'type': str, 'default': '', 'replace_nan': True}
         }
+
+        # 必須カラムのチェック (エラーハンドリング強化)
+        required_columns = ['単語', '説明', 'カテゴリ', '分野']
+        missing_columns = [col for col in required_columns if col not in df_processed.columns]
+        if missing_columns:
+            st.error(f"エラー: 以下の必須カラムがデータに見つかりません: {', '.join(missing_columns)}")
+            st.stop() # アプリの実行を停止
 
         for col_name, config in column_configs.items():
             if col_name not in df_processed.columns:
@@ -274,32 +285,39 @@ class QuizApp:
     def handle_upload_logic(self, uploaded_file):
         """ファイルアップロードのロジックを処理します。"""
         if uploaded_file is not None:
+            # ファイルの内容が変更されたか、初めてアップロードされたかをチェック
             if (st.session_state.uploaded_file_name != uploaded_file.name or 
-                st.session_state.uploaded_file_size != uploaded_file.size):
+                st.session_state.uploaded_file_size != uploaded_file.size or
+                st.session_state.uploaded_df_temp is None): # 初回アップロード時はtempがNone
                 
                 try:
-                    uploaded_df = pd.read_csv(io.StringIO(uploaded_file.getvalue().decode('utf-8')))
-                    st.session_state.uploaded_df_temp = uploaded_df
-                    st.session_state.uploaded_file_name = uploaded_file.name
-                    st.session_state.uploaded_file_size = uploaded_file.size
-                    
-                    st.session_state.quiz_df = self._process_df_types(uploaded_df.copy())
-                    st.session_state.data_source_selection = "アップロード" 
-                    self._reset_quiz_state_only() 
-                    st.rerun() 
-                except Exception as e:
-                    st.error(f"ファイルの読み込み中にエラーが発生しました: {e}")
-                    st.session_state.uploaded_df_temp = None
-                    st.session_state.uploaded_file_name = None
-                    st.session_state.uploaded_file_size = None
+                    # UTF-8でデコードを試み、失敗したらShift-JISで試す
+                    content_str = uploaded_file.getvalue().decode('utf-8')
+                except UnicodeDecodeError:
+                    content_str = uploaded_file.getvalue().decode('shift_jis')
+
+                uploaded_df = pd.read_csv(io.StringIO(content_str))
+                st.session_state.uploaded_df_temp = uploaded_df
+                st.session_state.uploaded_file_name = uploaded_file.name
+                st.session_state.uploaded_file_size = uploaded_file.size
+                
+                st.session_state.quiz_df = self._process_df_types(uploaded_df.copy())
+                st.session_state.data_source_selection = "アップロード" 
+                self._reset_quiz_state_only() 
+                st.rerun() 
+            else:
+                # 同じファイルが再アップロードされた場合（内容変更なし）
+                # 特に何もしないか、あるいは「既にロード済みです」のようなメッセージを出すことも可能
+                pass
         else:
+            # ファイルアップロードウィジェットがクリアされた場合
             if st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is not None:
-                 st.session_state.uploaded_df_temp = None
-                 st.session_state.uploaded_file_name = None
-                 st.session_state.uploaded_file_size = None
-                 st.session_state.data_source_selection = "初期データ"
-                 self._load_initial_data() 
-                 st.rerun()
+                st.session_state.uploaded_df_temp = None
+                st.session_state.uploaded_file_name = None
+                st.session_state.uploaded_file_size = None
+                st.session_state.data_source_selection = "初期データ"
+                self._load_initial_data() 
+                st.rerun()
 
 
     @staticmethod
@@ -348,6 +366,7 @@ class QuizApp:
                 (df_filtered["正解回数"] <= 3) 
             ].copy()
             if not low_correct_count_answered.empty:
+                # 既にstruggled_answeredに含まれている単語を除外
                 low_correct_count_answered = low_correct_count_answered[~low_correct_count_answered['単語'].isin(quiz_candidates_df['単語'])]
                 if not low_correct_count_answered.empty:
                     low_correct_count_answered['temp_weight'] = low_correct_count_answered['正解回数'].apply(lambda x: 4 - x) 
@@ -363,15 +382,17 @@ class QuizApp:
             st.session_state.current_quiz = None
             return
 
+        # 重複する単語を除外し、temp_weightでソート
         quiz_candidates_df = quiz_candidates_df.sort_values(by='temp_weight', ascending=False).drop_duplicates(subset='単語', keep='first')
 
-        if quiz_candidates_df.empty:
+        if quiz_candidates_df.empty: # 重複排除後も空になる可能性があるので再チェック
             st.session_state.current_quiz = None
             return
 
         weights = quiz_candidates_df['temp_weight'].tolist()
         
         if not weights or all(w == 0 for w in weights): 
+            # 重みが全て0または空の場合、均等にサンプリング
             selected_quiz_row = quiz_candidates_df.sample(n=1).iloc[0]
         else:
             selected_quiz_row = quiz_candidates_df.sample(n=1, weights=weights).iloc[0]
@@ -400,8 +421,7 @@ class QuizApp:
 
     def _process_answer(self):
         """ユーザーが「回答する」ボタンをクリックしたときに実行される処理。"""
-        # 処理中の表示を即座に行うために、ここでは st.rerun() は呼ばない
-        # Streamlitはセッション状態の変更を検知して自動的に再実行する
+        st.session_state.processing_answer = True # 処理中フラグを設定
 
         if st.session_state.current_quiz and st.session_state.selected_answer:
             st.session_state.latest_answered_quiz = st.session_state.current_quiz.copy() # 直前のクイズ情報を保持
@@ -409,59 +429,69 @@ class QuizApp:
             correct_answer_description = st.session_state.latest_answered_quiz["説明"]
             term = st.session_state.latest_answered_quiz["単語"]
             
-            idx = st.session_state.quiz_df.index[st.session_state.quiz_df["単語"] == term].tolist()
-            if idx:
-                idx = idx[0] 
+            # DataFrameを直接変更するため、コピーではなく参照で操作
+            idx_list = st.session_state.quiz_df.index[st.session_state.quiz_df["単語"] == term].tolist()
+            if idx_list:
+                idx = idx_list[0]
                 
                 # DataFrameの更新
                 if st.session_state.selected_answer == correct_answer_description:
-                    st.session_state.quiz_df.loc[idx, ['〇×結果', '正解回数', '最終実施日時']] = ['〇', st.session_state.quiz_df.loc[idx, '正解回数'] + 1, datetime.now()]
+                    st.session_state.quiz_df.loc[idx, '〇×結果'] = '〇'
+                    st.session_state.quiz_df.loc[idx, '正解回数'] += 1
                     st.session_state.latest_result = "正解！🎉"
                     st.session_state.correct += 1
                 else:
-                    st.session_state.quiz_df.loc[idx, ['〇×結果', '不正解回数', '最終実施日時']] = ['×', st.session_state.quiz_df.loc[idx, '不正解回数'] + 1, datetime.now()]
+                    st.session_state.quiz_df.loc[idx, '〇×結果'] = '×'
+                    st.session_state.quiz_df.loc[idx, '不正解回数'] += 1
                     st.session_state.latest_result = "不正解…💧"
                 
+                st.session_state.quiz_df.loc[idx, '最終実施日時'] = datetime.now() # 実施日時を更新
+
                 st.session_state.total += 1
                 st.session_state.latest_correct_description = correct_answer_description
                 
                 st.session_state.quiz_state = "answered" # 回答済み状態へ遷移
-                st.session_state.processing_answer = False # 処理終了（ここではUIは描画されない。Streamlitの再実行を待つ）
+                st.session_state.processing_answer = False # 処理終了
+                st.rerun() # ここでアプリケーションを強制的に再実行し、UIを更新
             else:
                 if st.session_state.debug_mode:
                     st.session_state.debug_message_error = f"DEBUG: エラー: 単語 '{term}' がDataFrameに見つかりません。"
                 st.session_state.processing_answer = False # エラー時もフラグ解除
                 st.error("回答処理中にエラーが発生しました。")
+        else: # selected_answerがない場合など
+            if st.session_state.debug_mode:
+                st.session_state.debug_message_error = "DEBUG: 回答処理が実行されましたが、current_quizまたはselected_answerがNoneでした。"
+            st.session_state.processing_answer = False
 
 
     def _go_to_next_quiz(self):
         """「次へ」ボタンクリックで次のクイズをロードする処理。"""
-        # ここも st.rerun() は呼ばず、セッション状態の変更をトリガーにする
-        # UIの切り替わりをスムーズにするために、current_quiz を一旦 None に設定
         st.session_state.current_quiz = None 
         st.session_state.latest_answered_quiz = None # 前回の回答表示をクリア
         st.session_state.selected_answer = None # 選択肢もクリア
         st.session_state.quiz_state = "question" # 問題表示状態へ遷移
         
-        # 次の問題をロード
+        # 次の問題をロード (load_quiz() の中で quiz_choice_index もインクリメントされる)
         self.load_quiz() 
-        # load_quiz() の中で quiz_choice_index もインクリメントされる
         
-        st.session_state.processing_answer = False # 処理終了（ここではUIは描画されない。Streamlitの再実行を待つ）
+        st.session_state.processing_answer = False # 処理終了
+        st.rerun() # ここでアプリケーションを強制的に再実行
 
 
     def display_quiz(self, df_filtered: pd.DataFrame, remaining_df: pd.DataFrame):
         """クイズのUIを表示します。"""
         if st.session_state.debug_mode:
-            st.expander("デバッグ情報", expanded=False).write(st.session_state.debug_message_quiz_start)
+            st.expander("デバッグ情報 (問題ロード)", expanded=False).write(st.session_state.debug_message_quiz_start)
 
         # アプリ起動時やフィルター変更後など、current_quizがまだ設定されていない場合に、最初の問題をロード
         # quiz_state が "question" のときのみロードを試みる
         if st.session_state.current_quiz is None and st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty and st.session_state.quiz_state == "question":
             if not st.session_state.processing_answer: # 処理中でなければロード
                 self.load_quiz()
-                # ここでは st.rerun() を呼ばず、Streamlitの自然な再実行に任せる
-
+                # ここでは st.rerun() を呼ばず、Streamlitの自然な再実行に任せる (ロード直後)
+                # ただし、ロード後にすぐにUIを更新したい場合はここでrerunを検討するが、
+                # 通常はセッションステート変更で自動再実行される
+        
         # 問題が存在する場合のみUIを表示
         if st.session_state.current_quiz:
             st.markdown(f"### 単語: **{st.session_state.current_quiz['単語']}**")
@@ -529,7 +559,7 @@ class QuizApp:
                     st.button("次へ", on_click=self._go_to_next_quiz, disabled=st.session_state.processing_answer)
                 
                 if st.session_state.debug_mode:
-                    st.expander("デバッグ情報", expanded=False).write(st.session_state.debug_message_answer_update)
+                    st.expander("デバッグ情報 (回答後)", expanded=False).write(st.session_state.debug_message_answer_update)
 
         else: # current_quiz が None の場合（問題がない場合）
             if st.session_state.processing_answer:
@@ -562,7 +592,7 @@ class QuizApp:
                     st.info("現在のクイズモードで出題できる単語が見つかりませんでした。フィルター設定を変更するか、別のクイズモードを試してください。")
                 
             if st.session_state.debug_mode:
-                st.expander("デバッグ情報", expanded=False).write("DEBUG: current_quiz is None.")
+                st.expander("デバッグ情報 (問題なし)", expanded=False).write("DEBUG: current_quiz is None.")
 
 
     def display_data_viewer(self):
@@ -636,15 +666,22 @@ def main():
     
     # ファイルアップロードのハンドリング
     if uploaded_file is not None:
-        quiz_app.handle_upload_logic(uploaded_file)
+        # 新しいファイルが選択された場合、または前回と異なるファイルの場合のみ処理
+        if (st.session_state.uploaded_file_name != uploaded_file.name or 
+            st.session_state.uploaded_file_size != uploaded_file.size):
+            quiz_app.handle_upload_logic(uploaded_file)
+        elif st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is None:
+            # アップロードモードなのにtempデータがない場合（例：アプリ再起動後）
+            quiz_app.handle_upload_logic(uploaded_file)
     else:
+        # アップロードファイルがクリアされた、または選択されていない場合
         if st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is not None:
-             st.session_state.uploaded_df_temp = None
-             st.session_state.uploaded_file_name = None
-             st.session_state.uploaded_file_size = None
-             st.session_state.data_source_selection = "初期データ"
-             quiz_app._load_initial_data()
-             st.rerun()
+            st.session_state.uploaded_df_temp = None
+            st.session_state.uploaded_file_name = None
+            st.session_state.uploaded_file_size = None
+            st.session_state.data_source_selection = "初期データ"
+            quiz_app._load_initial_data()
+            st.rerun()
 
 
     # タブの作成
@@ -687,6 +724,7 @@ def main():
                 on_change=quiz_app._reset_quiz_state_only 
             )
 
+            # シラバス改定有無のオプションを動的に取得し、空文字列を削除
             valid_syllabus_changes = df_base_for_filters["シラバス改定有無"].astype(str).str.strip().replace('', pd.NA).dropna().unique().tolist()
             syllabus_change_options = ["すべて"] + sorted(valid_syllabus_changes)
             
@@ -739,3 +777,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+�
