@@ -601,3 +601,160 @@ class QuizApp:
             )
         else:
             st.info("表示するデータがありません。")
+
+# アプリケーションの実行
+def main():
+    quiz_app = QuizApp()
+
+    # アプリケーションの初期ロード時に初期データをロード
+    if st.session_state.quiz_df is None and st.session_state.force_initial_load:
+        quiz_app._load_initial_data()
+        st.session_state.force_initial_load = False 
+
+    # サイドバーのデータソース選択
+    st.sidebar.header("📚 データソース")
+    data_source_options_radio = ["初期データ", "アップロード"]
+
+    def on_data_source_change():
+        """ラジオボタンが変更されたときに呼び出されるコールバック関数"""
+        st.session_state.data_source_selection = st.session_state.main_data_source_radio
+        
+        if st.session_state.data_source_selection == "初期データ":
+            quiz_app._load_initial_data() 
+            st.session_state.uploaded_df_temp = None
+            st.session_state.uploaded_file_name = None
+            st.session_state.uploaded_file_size = None
+        else: # "アップロード"が選択された場合
+            if st.session_state.uploaded_df_temp is not None:
+                quiz_app._load_uploaded_data()
+            else: 
+                st.warning("アップロードデータが選択されていません。CSVファイルをアップロードしてください。")
+
+    selected_source_radio = st.sidebar.radio(
+        "**データソースを選択**",
+        options=data_source_options_radio,
+        key="main_data_source_radio",
+        index=data_source_options_radio.index(st.session_state.data_source_selection) if st.session_state.data_source_selection in data_source_options_radio else 0,
+        on_change=on_data_source_change
+    )
+
+    uploaded_file = st.sidebar.file_uploader(
+        "CSVファイルをアップロード", 
+        type=["csv"], 
+        key="uploader", 
+        label_visibility="hidden",
+        disabled=(st.session_state.data_source_selection == "初期データ")
+    )
+    
+    # ファイルアップロードのハンドリング
+    if uploaded_file is not None:
+        # 新しいファイルが選択された場合、または前回と異なるファイルの場合のみ処理
+        if (st.session_state.uploaded_file_name != uploaded_file.name or 
+            st.session_state.uploaded_file_size != uploaded_file.size):
+            quiz_app.handle_upload_logic(uploaded_file)
+        elif st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is None:
+            # アップロードモードなのにtempデータがない場合（例：アプリ再起動後）
+            quiz_app.handle_upload_logic(uploaded_file)
+    else:
+        # アップロードファイルがクリアされた、または選択されていない場合
+        if st.session_state.data_source_selection == "アップロード" and st.session_state.uploaded_df_temp is not None:
+            st.session_state.uploaded_df_temp = None
+            st.session_state.uploaded_file_name = None
+            st.session_state.uploaded_file_size = None
+            st.session_state.data_source_selection = "初期データ"
+            quiz_app._load_initial_data()
+
+
+    # タブの作成
+    tab1, tab2 = st.tabs(["クイズ", "データビューア"])
+
+    # --- サイドバーに表示するフィルターと件数の計算を、sidebarコンテキスト内で実行 ---
+    with st.sidebar:
+        st.header("🎯 クイズモード")
+        quiz_modes = ["未回答", "苦手", "復習"]
+        st.session_state.quiz_mode = st.radio(
+            "",
+            quiz_modes, 
+            index=quiz_modes.index(st.session_state.quiz_mode) if st.session_state.quiz_mode in quiz_modes else 0,
+            key="quiz_mode_radio",
+            label_visibility="hidden",
+            on_change=quiz_app._reset_quiz_state_only 
+        )
+
+        st.header("クイズの絞り込み") 
+        
+        df_filtered = pd.DataFrame()
+        remaining_df = pd.DataFrame()
+
+        if st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty:
+            df_base_for_filters = st.session_state.quiz_df.copy() 
+
+            categories = ["すべて"] + df_base_for_filters["カテゴリ"].dropna().unique().tolist()
+            st.session_state.filter_category = st.selectbox(
+                "カテゴリで絞り込み", categories, 
+                index=categories.index(st.session_state.filter_category) if st.session_state.filter_category in categories else 0,
+                key="filter_category_selectbox",
+                on_change=quiz_app._reset_quiz_state_only 
+            )
+
+            fields = ["すべて"] + df_base_for_filters["分野"].dropna().unique().tolist()
+            st.session_state.filter_field = st.selectbox(
+                "分野で絞り込み", fields, 
+                index=fields.index(st.session_state.filter_field) if st.session_state.filter_field in fields else 0,
+                key="filter_field_selectbox",
+                on_change=quiz_app._reset_quiz_state_only 
+            )
+
+            # シラバス改定有無のオプションを動的に取得し、空文字列を削除
+            valid_syllabus_changes = df_base_for_filters["シラバス改定有無"].astype(str).str.strip().replace('', pd.NA).dropna().unique().tolist()
+            syllabus_change_options = ["すべて"] + sorted(valid_syllabus_changes)
+            
+            st.session_state.filter_level = st.selectbox(
+                "🔄 シラバス改定有無で絞り込み", 
+                syllabus_change_options, 
+                index=syllabus_change_options.index(st.session_state.filter_level) if st.session_state.filter_level in syllabus_change_options else 0,
+                key="filter_level_selectbox",
+                on_change=quiz_app._reset_quiz_state_only 
+            )
+
+            df_filtered = QuizApp._apply_filters(st.session_state.quiz_df) 
+            remaining_df = df_filtered[df_filtered["〇×結果"] == '']
+        else:
+            st.info("データがロードされていません。") 
+        
+        st.markdown("---")
+        st.subheader("📊 クイズ進捗")
+        
+        filtered_count = len(df_filtered)
+
+        st.markdown(f"<div class='metric-container'><span class='metric-label'>正解：</span><span class='metric-value'>{st.session_state.correct}</span></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='metric-container'><span class='metric-label'>回答：</span><span class='metric-value'>{st.session_state.total}</span></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='metric-container'><span class='metric-label'>未回答：</span><span class='metric-value'>{len(remaining_df)}</span></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='metric-container'><span class='metric-label'>対象：</span><span class='metric-value'>{filtered_count}</span></div>", unsafe_allow_html=True)
+
+        st.markdown("---")
+        st.subheader("開発者ツール")
+        st.session_state.debug_mode = st.checkbox(
+            "デバッグモードを有効にする", 
+            value=st.session_state.debug_mode, 
+            key="debug_mode_checkbox"
+        )
+    
+    with tab1:
+        st.header("情報処理試験対策クイズ")
+        quiz_app.display_quiz(df_filtered, remaining_df)
+
+    with tab2:
+        st.header("登録データ一覧")
+        quiz_app.display_data_viewer()
+
+    st.markdown("---")
+    st.markdown("""
+    <div style="text-align: center; margin-top: 20px; font-size: 0.8em; color: #666;">
+        <p>Powered by Streamlit and Gemini</p>
+        <p>© 2024 Your Company Name or Your Name. All rights reserved.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    main()
