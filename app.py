@@ -8,7 +8,7 @@ import time
 # Streamlitページの初期設定
 st.set_page_config(
     page_title="情報処理試験対策クイズ",
-    page_icon="📚",
+    page_icon="�",
     layout="centered", # 'centered' or 'wide'
     initial_sidebar_state="expanded" # 'auto', 'expanded', 'collapsed'
 )
@@ -304,7 +304,7 @@ class QuizApp:
                 st.session_state.quiz_df = self._process_df_types(uploaded_df.copy())
                 st.session_state.data_source_selection = "アップロード" 
                 self._reset_quiz_state_only() 
-                st.rerun() 
+                # st.rerun() # コールバック内なので削除
             else:
                 # 同じファイルが再アップロードされた場合（内容変更なし）
                 # 特に何もしないか、あるいは「既にロード済みです」のようなメッセージを出すことも可能
@@ -317,7 +317,7 @@ class QuizApp:
                 st.session_state.uploaded_file_size = None
                 st.session_state.data_source_selection = "初期データ"
                 self._load_initial_data() 
-                st.rerun()
+                # st.rerun() # コールバック内なので削除
 
 
     @staticmethod
@@ -421,7 +421,9 @@ class QuizApp:
 
     def _process_answer(self):
         """ユーザーが「回答する」ボタンをクリックしたときに実行される処理。"""
-        st.session_state.processing_answer = True # 処理中フラグを設定
+        # processing_answerフラグは、UIのブロックを目的としているため、st.buttonのdisabled属性で制御
+        # ここではセッションステートを更新し、Streamlitの自動再実行に任せる
+        # st.session_state.processing_answer = True # コールバック内でTrueにしても次の再実行でしか反映されないため削除
 
         if st.session_state.current_quiz and st.session_state.selected_answer:
             st.session_state.latest_answered_quiz = st.session_state.current_quiz.copy() # 直前のクイズ情報を保持
@@ -451,17 +453,21 @@ class QuizApp:
                 st.session_state.latest_correct_description = correct_answer_description
                 
                 st.session_state.quiz_state = "answered" # 回答済み状態へ遷移
-                st.session_state.processing_answer = False # 処理終了
-                st.rerun() # ここでアプリケーションを強制的に再実行し、UIを更新
+                # st.session_state.processing_answer = False # コールバック内でFalseにしても次の再実行でしか反映されないため削除
+                # st.rerun() # コールバック内なので削除
             else:
                 if st.session_state.debug_mode:
                     st.session_state.debug_message_error = f"DEBUG: エラー: 単語 '{term}' がDataFrameに見つかりません。"
-                st.session_state.processing_answer = False # エラー時もフラグ解除
+                # st.session_state.processing_answer = False # エラー時もフラグ解除。これもコールバック内でセットしても同じ
                 st.error("回答処理中にエラーが発生しました。")
         else: # selected_answerがない場合など
             if st.session_state.debug_mode:
                 st.session_state.debug_message_error = "DEBUG: 回答処理が実行されましたが、current_quizまたはselected_answerがNoneでした。"
-            st.session_state.processing_answer = False
+            # st.session_state.processing_answer = False # 同じく
+            
+        # コールバックの最後にセッションステートを変更するだけ。
+        # Streamlitがこれを検知して再実行する。
+        # 強制的にUIをブロックする必要がある場合は、with st.spinner()などを使う。
 
 
     def _go_to_next_quiz(self):
@@ -474,8 +480,8 @@ class QuizApp:
         # 次の問題をロード (load_quiz() の中で quiz_choice_index もインクリメントされる)
         self.load_quiz() 
         
-        st.session_state.processing_answer = False # 処理終了
-        st.rerun() # ここでアプリケーションを強制的に再実行
+        # st.session_state.processing_answer = False # コールバック内なので削除
+        # st.rerun() # コールバック内なので削除
 
 
     def display_quiz(self, df_filtered: pd.DataFrame, remaining_df: pd.DataFrame):
@@ -486,11 +492,8 @@ class QuizApp:
         # アプリ起動時やフィルター変更後など、current_quizがまだ設定されていない場合に、最初の問題をロード
         # quiz_state が "question" のときのみロードを試みる
         if st.session_state.current_quiz is None and st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty and st.session_state.quiz_state == "question":
-            if not st.session_state.processing_answer: # 処理中でなければロード
-                self.load_quiz()
-                # ここでは st.rerun() を呼ばず、Streamlitの自然な再実行に任せる (ロード直後)
-                # ただし、ロード後にすぐにUIを更新したい場合はここでrerunを検討するが、
-                # 通常はセッションステート変更で自動再実行される
+            # processing_answerは、UI側のボタンdisabledに使うため、ここでは直接参照しない
+            self.load_quiz()
         
         # 問題が存在する場合のみUIを表示
         if st.session_state.current_quiz:
@@ -505,7 +508,7 @@ class QuizApp:
                     st.session_state.current_quiz["choices"],
                     index=None, 
                     key=f"quiz_choice_{st.session_state.quiz_choice_index}",
-                    disabled=st.session_state.processing_answer # 回答処理中は無効化
+                    disabled=False # 問題表示中は常に有効（選択されていないだけ）
                 )
                 
                 # 回答が選択されたら「回答する」ボタンを有効化
@@ -514,7 +517,7 @@ class QuizApp:
                     st.button(
                         "回答する", 
                         on_click=self._process_answer, 
-                        disabled=(st.session_state.selected_answer is None or st.session_state.processing_answer)
+                        disabled=(st.session_state.selected_answer is None) # 回答が選択されていなければ無効
                     )
                 with col2:
                     # ここに「次へ」ボタンを配置しない
@@ -556,41 +559,38 @@ class QuizApp:
                     # ここに「回答する」ボタンを配置しない
                     pass
                 with col2:
-                    st.button("次へ", on_click=self._go_to_next_quiz, disabled=st.session_state.processing_answer)
+                    st.button("次へ", on_click=self._go_to_next_quiz, disabled=False) # 回答後は常に有効
                 
                 if st.session_state.debug_mode:
                     st.expander("デバッグ情報 (回答後)", expanded=False).write(st.session_state.debug_message_answer_update)
 
         else: # current_quiz が None の場合（問題がない場合）
-            if st.session_state.processing_answer:
-                # 処理中の場合は何もしない（スピナーが表示されているはず）
-                pass
-            else: 
-                current_df_filtered = QuizApp._apply_filters(st.session_state.quiz_df)
-                current_remaining_df = current_df_filtered[current_df_filtered["〇×結果"] == '']
+            # processing_answer はボタンのdisabled制御に使うものなので、ここで表示をブロックしない
+            current_df_filtered = QuizApp._apply_filters(st.session_state.quiz_df)
+            current_remaining_df = current_df_filtered[current_df_filtered["〇×結果"] == '']
 
-                if len(current_df_filtered) == 0:
-                    st.info("選択されたフィルター条件に合致する単語が見つかりませんでした。フィルター設定を変更してください。")
-                elif st.session_state.quiz_mode == "未回答" and len(current_remaining_df) == 0:
-                    st.info("おめでとうございます！選択されたフィルター条件で、すべての未回答単語をクリアしました。フィルターを変更するか、別のクイズモードを試してください。")
-                elif st.session_state.quiz_mode == "苦手":
-                    struggled_candidates = current_df_filtered[
-                        (current_df_filtered["〇×結果"] != '') & 
-                        (current_df_filtered["不正解回数"] > current_df_filtered["正解回数"])
-                    ]
-                    low_correct_candidates = current_df_filtered[
-                        (current_df_filtered['〇×結果'] != '') & 
-                        (current_df_filtered["正解回数"] <= 3) 
-                    ]
-                    if struggled_candidates.empty and low_correct_candidates.empty:
-                        st.info("「苦手」モードで出題すべき単語がありません。全ての苦手な単語を克服したようです！フィルターを変更するか、別のクイズモードを試してください。")
-                    else:
-                        st.info("現在のクイズモードで出題できる単語が見つかりませんでした。フィルター設定を変更するか、別のクイズモードを試してください。")
-                elif st.session_state.quiz_mode == "復習" and not current_df_filtered.empty:
-                    st.info("復習する単語が見つかりませんでした。フィルター設定を変更するか、クイズモードを切り替えてください。")
+            if len(current_df_filtered) == 0:
+                st.info("選択されたフィルター条件に合致する単語が見つかりませんでした。フィルター設定を変更してください。")
+            elif st.session_state.quiz_mode == "未回答" and len(current_remaining_df) == 0:
+                st.info("おめでとうございます！選択されたフィルター条件で、すべての未回答単語をクリアしました。フィルターを変更するか、別のクイズモードを試してください。")
+            elif st.session_state.quiz_mode == "苦手":
+                struggled_candidates = current_df_filtered[
+                    (current_df_filtered["〇×結果"] != '') & 
+                    (current_df_filtered["不正解回数"] > current_df_filtered["正解回数"])
+                ]
+                low_correct_candidates = current_df_filtered[
+                    (current_df_filtered['〇×結果'] != '') & 
+                    (current_df_filtered["正解回数"] <= 3) 
+                ]
+                if struggled_candidates.empty and low_correct_candidates.empty:
+                    st.info("「苦手」モードで出題すべき単語がありません。全ての苦手な単語を克服したようです！フィルターを変更するか、別のクイズモードを試してください。")
                 else:
                     st.info("現在のクイズモードで出題できる単語が見つかりませんでした。フィルター設定を変更するか、別のクイズモードを試してください。")
-                
+            elif st.session_state.quiz_mode == "復習" and not current_df_filtered.empty:
+                st.info("復習する単語が見つかりませんでした。フィルター設定を変更するか、クイズモードを切り替えてください。")
+            else:
+                st.info("現在のクイズモードで出題できる単語が見つかりませんでした。フィルター設定を変更するか、別のクイズモードを試してください。")
+            
             if st.session_state.debug_mode:
                 st.expander("デバッグ情報 (問題なし)", expanded=False).write("DEBUG: current_quiz is None.")
 
@@ -646,7 +646,7 @@ def main():
                 quiz_app._load_uploaded_data()
             else: 
                 st.warning("アップロードデータが選択されていません。CSVファイルをアップロードしてください。")
-        st.rerun() 
+        # st.rerun() # コールバック内なので削除
 
     selected_source_radio = st.sidebar.radio(
         "**データソースを選択**",
@@ -681,7 +681,7 @@ def main():
             st.session_state.uploaded_file_size = None
             st.session_state.data_source_selection = "初期データ"
             quiz_app._load_initial_data()
-            st.rerun()
+            # st.rerun() # コールバック内ではないが、データロードでst.successが呼ばれ再実行されるため削除
 
 
     # タブの作成
@@ -777,3 +777,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+�
