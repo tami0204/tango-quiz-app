@@ -8,7 +8,7 @@ import time
 # Streamlitページの初期設定
 st.set_page_config(
     page_title="情報処理試験対策クイズ",
-    page_icon="�",
+    page_icon="📚",
     layout="centered", # 'centered' or 'wide'
     initial_sidebar_state="expanded" # 'auto', 'expanded', 'collapsed'
 )
@@ -777,4 +777,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-�
