@@ -304,10 +304,8 @@ class QuizApp:
                 st.session_state.quiz_df = self._process_df_types(uploaded_df.copy())
                 st.session_state.data_source_selection = "アップロード" 
                 self._reset_quiz_state_only() 
-                # st.rerun() # コールバック内なので削除
             else:
                 # 同じファイルが再アップロードされた場合（内容変更なし）
-                # 特に何もしないか、あるいは「既にロード済みです」のようなメッセージを出すことも可能
                 pass
         else:
             # ファイルアップロードウィジェットがクリアされた場合
@@ -317,7 +315,6 @@ class QuizApp:
                 st.session_state.uploaded_file_size = None
                 st.session_state.data_source_selection = "初期データ"
                 self._load_initial_data() 
-                # st.rerun() # コールバック内なので削除
 
 
     @staticmethod
@@ -421,10 +418,6 @@ class QuizApp:
 
     def _process_answer(self):
         """ユーザーが「回答する」ボタンをクリックしたときに実行される処理。"""
-        # processing_answerフラグは、UIのブロックを目的としているため、st.buttonのdisabled属性で制御
-        # ここではセッションステートを更新し、Streamlitの自動再実行に任せる
-        # st.session_state.processing_answer = True # コールバック内でTrueにしても次の再実行でしか反映されないため削除
-
         if st.session_state.current_quiz and st.session_state.selected_answer:
             st.session_state.latest_answered_quiz = st.session_state.current_quiz.copy() # 直前のクイズ情報を保持
 
@@ -453,21 +446,16 @@ class QuizApp:
                 st.session_state.latest_correct_description = correct_answer_description
                 
                 st.session_state.quiz_state = "answered" # 回答済み状態へ遷移
-                # st.session_state.processing_answer = False # コールバック内でFalseにしても次の再実行でしか反映されないため削除
-                # st.rerun() # コールバック内なので削除
             else:
                 if st.session_state.debug_mode:
                     st.session_state.debug_message_error = f"DEBUG: エラー: 単語 '{term}' がDataFrameに見つかりません。"
-                # st.session_state.processing_answer = False # エラー時もフラグ解除。これもコールバック内でセットしても同じ
                 st.error("回答処理中にエラーが発生しました。")
         else: # selected_answerがない場合など
             if st.session_state.debug_mode:
                 st.session_state.debug_message_error = "DEBUG: 回答処理が実行されましたが、current_quizまたはselected_answerがNoneでした。"
-            # st.session_state.processing_answer = False # 同じく
             
         # コールバックの最後にセッションステートを変更するだけ。
         # Streamlitがこれを検知して再実行する。
-        # 強制的にUIをブロックする必要がある場合は、with st.spinner()などを使う。
 
 
     def _go_to_next_quiz(self):
@@ -479,9 +467,6 @@ class QuizApp:
         
         # 次の問題をロード (load_quiz() の中で quiz_choice_index もインクリメントされる)
         self.load_quiz() 
-        
-        # st.session_state.processing_answer = False # コールバック内なので削除
-        # st.rerun() # コールバック内なので削除
 
 
     def display_quiz(self, df_filtered: pd.DataFrame, remaining_df: pd.DataFrame):
@@ -492,7 +477,6 @@ class QuizApp:
         # アプリ起動時やフィルター変更後など、current_quizがまだ設定されていない場合に、最初の問題をロード
         # quiz_state が "question" のときのみロードを試みる
         if st.session_state.current_quiz is None and st.session_state.quiz_df is not None and not st.session_state.quiz_df.empty and st.session_state.quiz_state == "question":
-            # processing_answerは、UI側のボタンdisabledに使うため、ここでは直接参照しない
             self.load_quiz()
         
         # 問題が存在する場合のみUIを表示
@@ -565,7 +549,6 @@ class QuizApp:
                     st.expander("デバッグ情報 (回答後)", expanded=False).write(st.session_state.debug_message_answer_update)
 
         else: # current_quiz が None の場合（問題がない場合）
-            # processing_answer はボタンのdisabled制御に使うものなので、ここで表示をブロックしない
             current_df_filtered = QuizApp._apply_filters(st.session_state.quiz_df)
             current_remaining_df = current_df_filtered[current_df_filtered["〇×結果"] == '']
 
@@ -646,7 +629,6 @@ def main():
                 quiz_app._load_uploaded_data()
             else: 
                 st.warning("アップロードデータが選択されていません。CSVファイルをアップロードしてください。")
-        # st.rerun() # コールバック内なので削除
 
     selected_source_radio = st.sidebar.radio(
         "**データソースを選択**",
@@ -681,7 +663,6 @@ def main():
             st.session_state.uploaded_file_size = None
             st.session_state.data_source_selection = "初期データ"
             quiz_app._load_initial_data()
-            # st.rerun() # コールバック内ではないが、データロードでst.successが呼ばれ再実行されるため削除
 
 
     # タブの作成
