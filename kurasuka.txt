@@ -1,0 +1,379 @@
+﻿import os
+import re
+import zipfile
+import shutil
+import win32com.client
+import tkinter as tk
+from tkinter import messagebox
+from datetime import datetime, timedelta
+import pytz
+import pikepdf
+import csv
+
+class PpapProcessor:
+    def __init__(self, save_folder):
+        # フォルダパスの設定
+        self.save_folder = save_folder
+        self.pdf_unlocked_folder = os.path.join(save_folder, "解除済")
+        self.zip_extracted_folder = os.path.join(save_folder, "解凍済")
+        self.normal_folder = os.path.join(save_folder, "ノーマル")
+        self.mail_body_folder = os.path.join(save_folder, "メール本文")
+        self.gattai_folder = os.path.join(save_folder, "00_合体フォルダ")
+
+        # フォルダの存在チェックと作成
+        os.makedirs(self.save_folder, exist_ok=True)
+        os.makedirs(self.pdf_unlocked_folder, exist_ok=True)
+        os.makedirs(self.zip_extracted_folder, exist_ok=True)
+        os.makedirs(self.normal_folder, exist_ok=True)
+        os.makedirs(self.mail_body_folder, exist_ok=True)
+        os.makedirs(self.gattai_folder, exist_ok=True)
+
+        # 処理結果リストの初期化
+        self.successful_operations = []
+        self.failed_unlocks = []
+        self.failed_extractions = []
+        self.scripted_pdfs = []
+        self.filter_str = ""
+        self.virtual_area_2 = []
+
+        # 日付入力フォーム用の変数
+        self.root = None
+        self.entry_start = None
+        self.entry_end = None
+        self.date_from = None
+        self.date_to = None
+
+
+    def run(self):
+        """
+        メインの処理フローを実行するメソッド
+        """
+        self._get_dates_from_form()
+        self._process_emails()
+        #=========================================
+          if attachments.Count ==0 
+			 self.tenpufaile_nashi()
+		  else
+		     tenpufaile_ari(self)
+        
+        #=========================================
+        self._create_summary_csv()
+        self._create_gattai_folder()
+
+
+    def _get_dates_from_form(self):
+        """
+        Tkinterを使って抽出期間を入力するフォームを表示する。
+        """
+        def submit():
+            try:
+                start = datetime.strptime(self.entry_start.get(), "%Y%m%d")
+                end = datetime.strptime(self.entry_end.get(), "%Y%m%d") + timedelta(days=1) - timedelta(seconds=1)
+                
+                self.date_from = start
+                self.date_to = end
+                start_str = self.date_from.strftime('%m/%d/%Y %H:%M %p')
+                end_str = self.date_to.strftime('%m/%d/%Y %H:%M %p')
+                self.filter_str = f"[ReceivedTime] >= '{start_str}' AND [ReceivedTime] <= '{end_str}'"
+                
+                self.root.destroy()
+            except ValueError:
+                messagebox.showerror("入力エラー", "日付は YYYYMMDD 形式で入力してください。")
+
+        self.root = tk.Tk()
+        self.root.title("抽出期間の入力")
+        self.root.geometry("400x250")
+        font_large = ("Meiryo", 14)
+
+        tk.Label(self.root, text="開始日（YYYYMMDD）", font=font_large).pack(pady=10)
+        self.entry_start = tk.Entry(self.root, font=font_large, width=20)
+        self.entry_start.pack()
+
+        tk.Label(self.root, text="終了日（YYYYMMDD）", font=font_large).pack(pady=10)
+        self.entry_end = tk.Entry(self.root, font=font_large, width=20)
+        self.entry_end.pack()
+
+        tk.Button(self.root, text="実行", font=font_large, command=submit).pack(pady=20)
+        self.root.mainloop()
+
+##
+    def _extract_password(self, body):
+        """
+        メール本文からパスワードらしき文字列を抽出する。
+        """
+        keywords = ["パスワード", "開封パスワード", "暗号", "Password", "PW"]
+        lines = body.splitlines()
+
+
+		for i, line in enumerate(lines):
+    		if any(keyword in line for keyword in keywords):
+        		for j in range(max(0, i - 5), min(len(lines), i + 6)):
+            		candidate = lines[j].strip()
+            		for keyword in keywords:
+                		match = re.search(fr"{keyword}[^A-Za-z0-9\-]*([A-Za-z0-9\-]{{6,}})", candidate)
+                		if match:
+                    		return match.group(1)
+		return None
+##		
+    def _find_best_password(self, sender, received_time):
+        """
+        送信者と受信日時が最も近いメールからパスワードを検索する。
+        """
+        best_msg = None
+        min_diff = float('inf')
+        
+        for msg_data in self.virtual_area_2:
+            if msg_data["sender"] != sender:
+                continue
+                
+            body = msg_data["body"]
+            received = msg_data["received"]
+            if "パスワード" in body or "開封パスワード" in body:
+                diff = abs((received_time - received).total_seconds())
+                if diff < min_diff:
+                    min_diff = diff
+                    best_msg = msg_data
+                    
+        return self._extract_password(best_msg["body"]) if best_msg else None
+
+
+    def _decode_filename(self, raw_name):
+        """
+        ZIPファイル内の文字化けしたファイル名を正しくデコードする。
+        """
+        for encoding in ['utf-8', 'shift_jis', 'cp932']:
+            try:
+                decoded_name = raw_name.encode('cp437').decode(encoding)
+                # Windowsで許可されていない文字を削除
+                return re.sub(r'[\\/:*?"<>|]', '', decoded_name)
+            except:
+                continue
+        return raw_name
+
+    def _extract_zip_with_encoding(self, zip_path, password, received):
+        """
+        パスワード付きZIPファイルを解凍し、中身を保存する。
+        """
+        try:
+            with zipfile.ZipFile(zip_path) as zf:
+                for info in zf.infolist():
+                    if info.is_dir():
+                        continue  # ディレクトリはスキップ
+                    try:
+                        filename = self._decode_filename(info.filename)
+                    except:
+                        filename = info.filename
+                    
+                    # パスからファイル名のみを抽出して保存
+                    target_path = os.path.join(self.zip_extracted_folder, os.path.basename(filename))
+                    
+                    # ファイルがすでに存在する場合はスキップ
+                    if not os.path.exists(target_path):
+                        with zf.open(info, pwd=bytes(password, 'utf-8')) as source, open(target_path, 'wb') as target:
+                            shutil.copyfileobj(source, target)
+                    else:
+                        print(f"ZIP解凍済みのためスキップ: {target_path} はすでに存在します。")
+            print(f"ZIP解凍成功: {zip_path}")
+            return True
+        except Exception as e:
+            print(f"ZIP解凍失敗: {zip_path} → {e}")
+            return False
+##
+    def _process_emails(self):
+        """
+        メールを処理するメインのループ
+        """
+        outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
+        inbox = outlook.GetDefaultFolder(6)
+        messages = inbox.Items.Restrict(self.filter_str)
+        messages.Sort("[ReceivedTime]", False)
+
+        self.virtual_area_2 = []
+        for message in messages:
+            try:
+                if message.Class == 43 and any(keyword in subject for keyword in ["請求書", "パスワード", "開封パスワード", "暗号", "Password", "PW"]):
+                  subject = message.Subject or ""
+                  self.male_naiyo_get(message, subject)
+
+            except Exception as e:
+                print(f"仮想領域2抽出エラー: {e}")
+                
+            self.tenpufaile_get()    
+
+		 
+			           
+     def male_naiyo_get(self, message, subject):
+          self.virtual_area_2.append({
+              "message": message,
+              "sender": message.SenderEmailAddress,
+              "subject": subject,
+              "body": message.Body or "",
+              "received": message.ReceivedTime,
+              "attachments": message.Attachments
+          })
+                    
+	  def tenpufaile_get(self)
+        	for msg_data in self.virtual_area_2:
+            	sender = msg_data["sender"]
+            	received = msg_data["received"]
+            	attachments = msg_data["attachments"]
+            	message = msg_data["message"]
+            	
+				
+	  def tenpufaile_nashi(self)
+          body = message.Body
+          subject = message.Subject
+          safe_subject = re.sub(r'[\\/:*?"<>|\t\n\r]', '', subject)
+          body_filename = f"本文_{safe_subject}.txt"
+          body_path = os.path.join(self.mail_body_folder, body_filename)
+          urls = re.findall(r'https?://[a-zA-Z0-9\.\-/_%&?=#]+', body)
+          url_text = "\n\n--- 抽出されたURL ---\n" + "\n".join(urls) if urls else ""
+          with open(body_path, "w", encoding="utf-8") as f:
+              f.write(body + url_text)
+          print(f"添付ファイルなし → 本文を保存: {body_path}")
+          self.successful_operations.append({"種別": "本文保存", "filename": body_filename, "received": received, "urls": urls})
+          
+	  def tenpufaile_ari(self)
+            for attachment in attachments:
+                filename = attachment.FileName.lower()
+                file_path = os.path.join(self.save_folder, attachment.FileName)
+                attachment.SaveAsFile(file_path)
+				
+                if filename.endswith(".pdf"):
+                   pdf_proc
+                    try:
+                        with pikepdf.open(file_path) as pdf:
+                            self.pdf_shori_proc()
+                           
+                    except pikepdf.PasswordError:
+                    	    self.pdf_psw_ari_shori_proc()
+                    except Exception as e:
+                           print(f"PDF処理エラー: {attachment.FileName} → {e}")
+
+                elif filename.endswith(".zip"):
+                    password = self._find_best_password(sender, received)
+                    if password:
+                        if self._extract_zip_with_encoding(file_path, password, received):
+                            self.successful_operations.append({"種別": "ZIP解凍成功", "filename": attachment.FileName, "received": received})
+                        else:
+                            self.failed_extractions.append({"filename": attachment.FileName, "received": received})
+                    else:
+                        try:
+                        	self.kaitos_seiko_shori_proc()
+                        except Exception as e:
+                        	self.sonota_shori_proc()
+
+########################################################################################
+	def kaitos_seiko_shori_proc(self)
+
+        if self._extract_zip_with_encoding(file_path, "akkodis2025", received):
+            self.successful_operations.append({"種別": "ZIP解凍成功", "filename": attachment.FileName, "received": received})
+        else:
+            ntfnd_filename = "NTFND_" + attachment.FileName
+            ntfnd_path = os.path.join(self.normal_folder, ntfnd_filename)
+            if not os.path.exists(ntfnd_path):
+                shutil.move(file_path, ntfnd_path)
+                print(f"ZIPパスワード不明 → ノーマル保存: {ntfnd_path}")
+                self.failed_extractions.append({"filename": ntfnd_filename, "received": received})
+            else:
+                print(f"ZIPパスワード不明 → ノーマル保存スキップ: {ntfnd_path} はすでに存在します。")
+
+########################################################################################
+	def pdf_shori_proc(self)
+		if '/AcroForm' in pdf.root and '/JavaScript' in pdf.root.AcroForm:
+    		print(f"PDFにスクリプトが含まれています: {attachment.FileName}")
+    		self.scripted_pdfs.append({"filename": attachment.FileName, "received": received})
+		else:
+    		normal_path = os.path.join(self.normal_folder, attachment.FileName)
+    		if not os.path.exists(normal_path):
+        		pdf.save(normal_path)
+        		print(f"PDFノーマル保存: {normal_path}")
+        		self.successful_operations.append({"種別": "PDFノーマル保存", "filename": attachment.FileName, "received": received})
+    		else:
+        		print(f"PDFノーマル保存スキップ: {normal_path} はすでに存在します。")
+########################################################################################
+    def kagi_proc(self)
+        with pikepdf.open(file_path, password=password) as pdf:
+        
+        if '/AcroForm' in pdf.root and '/JavaScript' in pdf.root.AcroForm:
+            print(f"PDFにスクリプトが含まれています: {attachment.FileName}")
+            self.scripted_pdfs.append({"filename": attachment.FileName, "received": received})
+        else:
+            unlocked_path = os.path.join(self.pdf_unlocked_folder, "unlocked_" + attachment.FileName)
+            if not os.path.exists(unlocked_path):
+                pdf.save(unlocked_path)
+                print(f"PDF解除成功: {unlocked_path}")
+                self.successful_operations.append({"種別": "PDF解除成功", "filename": attachment.FileName, "received": received})
+            else:
+                print(f"PDF解除保存スキップ: {unlocked_path} はすでに存在します。")
+########################################################################################
+    def pdf_psw_ari_shori_proc()		
+       	password = self._find_best_password(sender, received)
+       	
+        if password:
+        	try:
+        		self.kagi_proc()
+        	except Exception as e:
+           		 print(f"PDF解除失敗: {attachment.FileName} → {e}")
+            	 self.failed_unlocks.append({"filename": attachment.FileName, "received": received})
+        else:
+        	print(f"PDFパスワード不明: {attachment.FileName}")
+        	self.failed_unlocks.append({"filename": attachment.FileName, "received": received})
+
+########################################################################################
+########################################################################################
+    def sonota_shori_proc(self)
+    	ntfnd_filename = "NTFND_" + attachment.FileName
+    	ntfnd_path = os.path.join(self.normal_folder, ntfnd_filename)
+    	if not os.path.exists(ntfnd_path):
+           shutil.move(file_path, ntfnd_path)
+       	   print(f"ZIPパスワード不明 → ノーマル保存: {ntfnd_path}")
+           self.failed_extractions.append({"filename": ntfnd_filename, "received": received})
+    	else:
+           print(f"ZIPパスワード不明 → ノーマル保存スキップ: {ntfnd_path} はすでに存在します。")
+    
+    
+########################################################################################
+    def _create_summary_csv(self):
+        """
+        処理結果をCSVファイルに保存する。
+        """
+        summary_csv_path = os.path.join(self.save_folder, "処理結果_summary.csv")
+        with open(summary_csv_path, mode='w', newline='', encoding='utf-8-sig') as file:
+            writer = csv.writer(file)
+            writer.writerow(["種別", "ファイル名", "受信日時（日本時間）", "URL"])
+            
+            for item in self.successful_operations:
+                urls = ",".join(item.get("urls", []))
+                writer.writerow([item["種別"], item["filename"], item["received"].strftime("%Y/%m/%d %H:%M"), urls])
+            
+            for item in self.failed_unlocks:
+                writer.writerow(["★★解除失敗（PDF）★★", item["filename"], item["received"].strftime("%Y/%m/%d %H:%M"), ""])
+            for item in self.failed_extractions:
+                writer.writerow(["★★解凍失敗（ZIP）★★", item["filename"], item["received"].strftime("%Y/%m/%d %H:%M"), ""])
+            for item in self.scripted_pdfs:
+                writer.writerow(["★★スクリプト付きPDF★★", item["filename"], item["received"].strftime("%Y/%m/%d %H:%M"), ""])
+
+        print("処理結果をCSVファイルに保存しました: {}".format(summary_csv_path))
+
+    def _create_gattai_folder(self):
+        """
+        指定されたフォルダにあるすべてのPDFファイルを合体フォルダにコピーする。
+        """
+        folders_to_copy = [self.pdf_unlocked_folder, self.normal_folder, self.zip_extracted_folder]
+        
+        for folder in folders_to_copy:
+            for filename in os.listdir(folder):
+                if filename.lower().endswith('.pdf'):
+                    source_path = os.path.join(folder, filename)
+                    dest_path = os.path.join(self.gattai_folder, filename)
+                    if not os.path.exists(dest_path):
+                        shutil.copy2(source_path, dest_path)
+                        print(f"コピー: {source_path} -> {dest_path}")
+                    else:
+                        print(f"スキップ: {dest_path} はすでに存在します。")
+
+# --- メイン処理の開始 ---
+if __name__ == '__main__':
+    processor = PpapProcessor(save_folder=r"C:\Users\016215\Desktop\ai_ocr\メール")
+    processor.run()
