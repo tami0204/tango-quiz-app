@@ -220,19 +220,22 @@ class PpapProcessor:
         best_msg = None
         min_diff = float('inf')
         
+        #---<パスワード抽出(本体メールは対象外)
         for msg_data in self.virtual_area_2:
             if msg_data["sender"] != sender:
-                continue
+               continue
                 
             body = msg_data["body"]
             received = msg_data["received"]
+            if received_time ==  received:
+               continue
             if "パスワード" in body or "開封パスワード" in body:
                 diff = abs((received_time - received).total_seconds())
                 if diff < min_diff:
                     min_diff = diff
                     best_msg = msg_data
-                    self._extract_password(best_msg["body"]) 
-
+                    
+        #---<パスワード抽出
         return self._extract_password(best_msg["body"]) if best_msg else None
     #======================================================================================#
     #  添付ファイルの請求書がＺＩＰの場合＿最善のパスワードを取得
@@ -243,17 +246,26 @@ class PpapProcessor:
         """
         keywords = ["パスワード", "開封パスワード", "暗号", "Password", "PW"]
         lines = body.splitlines()
+        
+   　#--<同一行のパスワード記述>
+        for i, line in enumerate(lines):
+            if any(keyword in line for keyword in keywords):
+               candidate = lines[i].strip()
+               for keyword in keywords:
+                   match = re.search(fr"{keyword}[^A-Za-z0-9\-]*([A-Za-z0-9\-]{6,}))", candidate)
+                   if match:
+                      return match.group(1)
 
-
+     #--<同一行以外のパスワード記述>
         for i, line in enumerate(lines):
             if any(keyword in line for keyword in keywords):
                 for j in range(max(0, i - 5), min(len(lines), i + 6)):
                     candidate = lines[j].strip()
                     for keyword in keywords:
-                        match = re.search(fr"{keyword}[^A-Za-z0-9\-]*([A-Za-z0-9\-]{{6,}})", candidate)
+                        match = re.search(fr"{keyword}[^A-Za-z0-9\-]*([A-Za-z0-9\-]{6,})", candidate)
                         if match:
-                            return match.group(1)
-
+                           return match.group(1)
+     #---<パスワードが取得できない時
         return None
 
 
