@@ -211,23 +211,6 @@ class PpapProcessor:
                     except Exception as e:
                         self.sonota_shori_proc(attachment)
     #======================================================================================#
-    #  添付ファイルの請求書がＰＤＦの場合
-    #======================================================================================#     
-     def pdf_shori_proc(self,attachment):
-
-        if '/AcroForm' in self.pdf.root and '/JavaScript' in self.pdf.root.AcroForm:
-            print(f"PDFにスクリプトが含まれています: {attachment.filename}")
-            self.scripted_pdfs.append({"filename": attachment.filename, "received": self.received})
-        else:
-            normal_path = os.path.join(self.normal_folder, attachment.filename)
-        if not os.path.exists(normal_path):
-            self.pdf.save(normal_path)
-            print(f"PDFノーマル保存: {normal_path}")
-            self.successful_operations.append({"種別": "PDFノーマル保存", "filename": attachment.filename, "received": self.received})
-        else:
-            print(f"PDFノーマル保存スキップ: {normal_path} はすでに存在します。")
-
-    #======================================================================================#
     #  添付ファイルの請求書がＺＩＰの場合＿ＰＰＡＰ等パスワードが書いてあるメールを特定
     #======================================================================================#
      def _find_best_password(self, sender, received_time):
@@ -248,6 +231,7 @@ class PpapProcessor:
                 if diff < min_diff:
                     min_diff = diff
                     best_msg = msg_data
+                    self._extract_password(best_msg["body"]) 
 
         return self._extract_password(best_msg["body"]) if best_msg else None
     #======================================================================================#
@@ -271,6 +255,57 @@ class PpapProcessor:
                             return match.group(1)
 
         return None
+
+
+    #======================================================================================#
+    #  添付ファイルの請求書がＰＤＦの場合
+    #======================================================================================#     
+     def pdf_shori_proc(self,attachment):
+
+        if '/AcroForm' in self.pdf.root and '/JavaScript' in self.pdf.root.AcroForm:
+            print(f"PDFにスクリプトが含まれています: {attachment.filename}")
+            self.scripted_pdfs.append({"filename": attachment.filename, "received": self.received})
+        else:
+            normal_path = os.path.join(self.normal_folder, attachment.filename)
+        if not os.path.exists(normal_path):
+            self.pdf.save(normal_path)
+            print(f"PDFノーマル保存: {normal_path}")
+            self.successful_operations.append({"種別": "PDFノーマル保存", "filename": attachment.filename, "received": self.received})
+        else:
+            print(f"PDFノーマル保存スキップ: {normal_path} はすでに存在します。")
+    #======================================================================================#
+    #  添付ファイルの請求書がＺＩＰの場合＿ＺＩＰ処理主処理
+    #======================================================================================#    
+     def pdf_psw_ari_shori_proc(self,attachment):
+        password = self._find_best_password(self.sender, self.received)
+        
+        if password:
+            try:
+                self.kagi_proc()
+            except Exception as e:
+                   print(f"PDF解除失敗: {attachment.filename} → {e}")
+                   self.failed_unlocks.append({"filename": attachment.filename, "received": self.received})
+        else:
+            print(f"PDFパスワード不明: {attachment.filename}")
+            self.failed_unlocks.append({"filename": attachment.filename, "received": self.received})
+
+    #======================================================================================#
+    #  添付ファイルの請求書がＺＩＰの場合＿鍵解除処理
+    #======================================================================================#    
+     def kagi_proc(self,attachment):
+        with pikepdf.open(self.file_path, password=self.password) as pdf:
+            if '/AcroForm' in pdf.root and '/JavaScript' in pdf.root.AcroForm:
+                print(f"PDFにスクリプトが含まれています: {attachment.filename}")
+                self.scripted_pdfs.append({"filename": attachment.filename, "received": received})
+            else:
+                unlocked_path = os.path.join(self.pdf_unlocked_folder, "unlocked_" + attachment.FileName)
+                if not os.path.exists(unlocked_path):
+                    pdf.save(unlocked_path)
+                    print(f"PDF解除成功: {unlocked_path}")
+                    self.successful_operations.append({"種別": "PDF解除成功", "filename": attachment.filename, "received": self.received})
+                else:
+                    print(f"PDF解除保存スキップ: {unlocked_path} はすでに存在します。")
+                    
     #======================================================================================#
     #  添付ファイルの請求書がＺＩＰの場合＿解凍処理
     #======================================================================================#    ##
@@ -333,35 +368,8 @@ class PpapProcessor:
                 self.failed_extractions.append({"filename": ntfnd_filename, "received": self.received})
             else:
                 print(f"ZIPパスワード不明 → ノーマル保存スキップ: {ntfnd_path} はすでに存在します。")
-    ########################################################################################
-     def kagi_proc(self,attachment):
-        with pikepdf.open(self.file_path, password=self.password) as pdf:
-            if '/AcroForm' in pdf.root and '/JavaScript' in pdf.root.AcroForm:
-                print(f"PDFにスクリプトが含まれています: {attachment.filename}")
-                self.scripted_pdfs.append({"filename": attachment.filename, "received": received})
-            else:
-                unlocked_path = os.path.join(self.pdf_unlocked_folder, "unlocked_" + attachment.FileName)
-                if not os.path.exists(unlocked_path):
-                    pdf.save(unlocked_path)
-                    print(f"PDF解除成功: {unlocked_path}")
-                    self.successful_operations.append({"種別": "PDF解除成功", "filename": attachment.filename, "received": self.received})
-                else:
-                    print(f"PDF解除保存スキップ: {unlocked_path} はすでに存在します。")
-    ########################################################################################
-     def pdf_psw_ari_shori_proc(self,attachment):
-        password = self._find_best_password(self.sender, self.received)
-        
-        if password:
-            try:
-                self.kagi_proc()
-            except Exception as e:
-                   print(f"PDF解除失敗: {attachment.filename} → {e}")
-                   self.failed_unlocks.append({"filename": attachment.filename, "received": self.received})
-        else:
-            print(f"PDFパスワード不明: {attachment.filename}")
-            self.failed_unlocks.append({"filename": attachment.filename, "received": self.received})
-
-    ########################################################################################
+                
+                
      def sonota_shori_proc(self,attachment):
         ntfnd_filename = "NTFND_" +  attachment.filename
         ntfnd_path = os.path.join(self.normal_folder, ntfnd_filename)
@@ -418,3 +426,4 @@ class PpapProcessor:
 if __name__ == '__main__':
    processor = PpapProcessor(save_folder=r"C:\Users\016215\Desktop\ai_ocr\メール")
    processor.run()
+
