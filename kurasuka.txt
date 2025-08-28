@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 import pytz
 import pikepdf
 import csv
+from email.utils import parseaddr
 
 class PpapProcessor:
      def __init__(self, save_folder):
@@ -58,6 +59,7 @@ class PpapProcessor:
         self._process_emails()
         #=========================================
         while True:
+            #---<仮想エリア2→1レコード単位で取得>
             msg_data = self.tenpufaile_get()
 
             if msg_data is None:
@@ -128,21 +130,59 @@ class PpapProcessor:
                         self.male_naiyo_get(message, subject)
             except Exception as e:
                 print(f"仮想領域2抽出エラー: {e}")
+
+     #---<仮想エリア2の降順ソート(reverse True → 降順/False または省略 → 昇順)
+        self.virtual_area_2.sort(key=lambda x: x["received"], reverse=False)
     #======================================================================================#
     #  対象メールの辞書化
     #======================================================================================#
      def male_naiyo_get(self, message, subject):
-            snd_Email_Addr = message.SenderEmailAddress
+    # 通常の送信者アドレス
+        snd_Email_Addr = message.SenderEmailAddress
 
-            self.virtual_area_2.append({
-                "message": message,
-                #"sender": message.SenderEmailAddress,
-                "sender": snd_Email_Addr,
-                "subject": subject,
-                "body": message.Body or "",
-                "received": message.ReceivedTime,
-                "attachments": message.Attachments
-            })                  
+    # real_sender を From ヘッダーから抽出（InternetMessageHeaders を使う場合）
+        real_sender = snd_Email_Addr  # 初期値
+
+        try:
+            # InternetMessageHeaders から "From" ヘッダーを探す
+            for header in message.InternetMessageHeaders:
+                if header.Name.lower() == "from":
+                    from_value = header.Value
+                    # 角括弧からメールアドレスを抽出
+                    import re
+                    match = re.search(r'<([^>]+)>', from_value)
+                if match:
+                    real_sender = match.group(1)
+                else:
+                    real_sender = from_value.strip()
+                break
+        except Exception as e:
+        # ヘッダーが取得できない場合はそのまま
+            pass
+
+    # データ追加
+        self.virtual_area_2.append({
+            "message": message,
+            "sender": snd_Email_Addr,
+            "real_sender": real_sender,
+            "subject": subject,
+            "body": message.Body or "",
+            "received": message.ReceivedTime,
+            "attachments": message.Attachments
+    })
+     # def male_naiyo_get(self, message, subject):
+     #        snd_Email_Addr = message.SenderEmailAddress
+
+     #        self.virtual_area_2.append({
+     #            "message": message,
+     #            #"sender": message.SenderEmailAddress,
+     #            "sender": snd_Email_Addr,
+     #            "real_sender": snd_Email_Addr,  #tami
+     #            "subject": subject,
+     #            "body": message.Body or "",
+     #            "received": message.ReceivedTime,
+     #            "attachments": message.Attachments
+     #        })                  
     #======================================================================================#
     #  対象メールの辞書化→1件単位抽出
     #======================================================================================#
@@ -154,10 +194,12 @@ class PpapProcessor:
            self.read_pointer += 1  # 次の位置へ進める
 
            self.sender = msg_data["sender"]
+           self.real_sender = msg_data["real_sender"]
            self.received = msg_data["received"]
            self.message = msg_data["message"]
            self.body = msg_data["body"]
            self.subject = msg_data["subject"]
+           
 
            # 添付ファイルの処理
            self.attachments = msg_data.get("attachments", [])   # "attachments"が有無を判定しあれば設定、無ければNULL
@@ -175,10 +217,13 @@ class PpapProcessor:
             safe_subject = re.sub(r'[\\/:*?"<>|\t\n\r]', '', subject)
             body_filename = f"本文_{safe_subject}.txt"
             body_path = os.path.join(self.mail_body_folder, body_filename)
+
             urls = re.findall(r'https?://[a-zA-Z0-9\.\-/_%&?=#]+', body)
+    
             url_text = "\n\n--- 抽出されたURL ---\n" + "\n".join(urls) if urls else ""
             with open(body_path, "w", encoding="utf-8") as f:
                 f.write(body + url_text)
+
             print(f"添付ファイルなし → 本文を保存: {body_path}")
             self.successful_operations.append({"種別": "本文保存", "filename": body_filename, "received": self.received, "urls": urls})
     #======================================================================================#
@@ -191,17 +236,18 @@ class PpapProcessor:
 				
             if self.filename.endswith(".pdf"):
                 try:
-                        with pikepdf.open(self.file_path) as pdf:
-                         self.pdf_shori_proc(attachment)       
+                       with pikepdf.open(self.file_path) as pdf:
+                        self.pdf = pdf
+                        self.pdf_shori_proc(attachment)       
                 except pikepdf.PasswordError:
                         self.pdf_psw_ari_shori_proc(attachment)
                 except Exception as e:
                         print(f"PDF処理エラー: {self.filename} → {e}")
 
             elif self.filename.endswith(".zip"):
-                password = self._find_best_password(self.sender, self.received)
-                if password:
-                    if self._extract_zip_with_encoding(self.file_path, password, self.received):
+                self.password = self._find_best_password(self.sender, self.received, self.real_sender)
+                if self.password:
+                    if self._extract_zip_with_encoding(self.file_path, self.password, self.received):
                         self.successful_operations.append({"種別": "ZIP解凍成功", "filename": self.filename, "received": self.received})
                     else:
                         self.failed_extractions.append({"filename": self.filename, "received": self.received})
@@ -213,18 +259,32 @@ class PpapProcessor:
     #======================================================================================#
     #  添付ファイルの請求書がＺＩＰの場合＿ＰＰＡＰ等パスワードが書いてあるメールを特定
     #======================================================================================#
-     def _find_best_password(self, sender, received_time):
+     def _find_best_password(self, sender, received_time, real_sender):
         """
         送信者と受信日時が最も近いメールからパスワードを検索する。
         """
         best_msg = None
         min_diff = float('inf')
-        
+        ########################################################################
+        if  sender == "urs-k_kikaku-bounces@ur-systems.co.jp":
+            wk_sender = real_sender 
+        else :
+            wk_sender =  sender 
+
+        ########################################################################
+        received=None
         #---<パスワード抽出(本体メールは対象外)
+        brk_f=0
         for msg_data in self.virtual_area_2:
-            if msg_data["sender"] != sender:
-               continue
-                
+            if msg_data["sender"]  ==  "urs-k_kikaku-bounces@ur-systems.co.jp":
+               wk_senderm = real_sender 
+            else :
+               wk_senderm=  msg_data["sender"]
+            if wk_senderm != wk_sender :
+               if brk_f == 1:
+                  break
+               else:
+                  continue 
             body = msg_data["body"]
             received = msg_data["received"]
             if received_time ==  received:
@@ -234,9 +294,11 @@ class PpapProcessor:
                 if diff < min_diff:
                     min_diff = diff
                     best_msg = msg_data
+                    brk_f = 1
                     
         #---<パスワード抽出
-        return self._extract_password(best_msg["body"]) if best_msg else None
+        if received_time!= received:
+            return self._extract_password(best_msg["body"]) if best_msg else None
     #======================================================================================#
     #  添付ファイルの請求書がＺＩＰの場合＿最善のパスワードを取得
     #======================================================================================#    
@@ -246,25 +308,36 @@ class PpapProcessor:
         """
         keywords = ["パスワード", "開封パスワード", "暗号", "Password", "PW"]
         lines = body.splitlines()
+        pattern = r"[A-Za-z0-9!@#\$%\^&\*\-_+=]{4,}"
         
-   　#--<同一行のパスワード記述>
+     #--<同一行のパスワード記述>
         for i, line in enumerate(lines):
             if any(keyword in line for keyword in keywords):
                candidate = lines[i].strip()
-               for keyword in keywords:
-                   match = re.search(fr"{keyword}[^A-Za-z0-9\-]*([A-Za-z0-9\-]{6,}))", candidate)
-                   if match:
-                      return match.group(1)
-
+               match = re.findall(pattern, candidate) 
+               if match:
+                  return match[0]  # 最初の英数字4文字以上のまとまりを返す
+              
      #--<同一行以外のパスワード記述>
         for i, line in enumerate(lines):
             if any(keyword in line for keyword in keywords):
-                for j in range(max(0, i - 5), min(len(lines), i + 6)):
+                for j in range(max(0, i - 5), min(len(lines), i + 4)):
                     candidate = lines[j].strip()
-                    for keyword in keywords:
-                        match = re.search(fr"{keyword}[^A-Za-z0-9\-]*([A-Za-z0-9\-]{6,})", candidate)
-                        if match:
-                           return match.group(1)
+                    #pattern = rf"[A-Za-z0-9]{4,}"
+                    #pattern = r"\b[A-Za-z0-9]{4,}\b"
+                    match = re.findall(pattern, candidate) 
+                    if match:
+                       return match[0]  # 最初の英数字4文字以上のまとまりを返す
+
+
+        # for i, line in enumerate(lines):
+        #     if any(keyword in line for keyword in keywords):
+        #         for j in range(max(0, i - 5), min(len(lines), i + 6)):
+        #             candidate = lines[j].strip()
+        #             for keyword in keywords: #時点、対象外となっていないか確認
+        #                 match = re.search(fr"{keyword}[^A-Za-z0-9\-]*([A-Za-z0-9\-]{6,})", candidate)
+        #                 if match:
+        #                    return match.group(1)
      #---<パスワードが取得できない時
         return None
 
@@ -274,26 +347,26 @@ class PpapProcessor:
     #======================================================================================#     
      def pdf_shori_proc(self,attachment):
 
-        if '/AcroForm' in self.pdf.root and '/JavaScript' in self.pdf.root.AcroForm:
-            print(f"PDFにスクリプトが含まれています: {attachment.filename}")
-            self.scripted_pdfs.append({"filename": attachment.filename, "received": self.received})
-        else:
-            normal_path = os.path.join(self.normal_folder, attachment.filename)
-        if not os.path.exists(normal_path):
+        # if '/AcroForm' in self.pdf.root and '/JavaScript' in self.pdf.root.AcroForm:
+        #     print(f"PDFにスクリプトが含まれています: {attachment.filename}")
+        #     self.scripted_pdfs.append({"filename": attachment.filename, "received": self.received})
+        # else:
+       normal_path = os.path.join(self.normal_folder, attachment.filename)
+       if not os.path.exists(normal_path):
             self.pdf.save(normal_path)
             print(f"PDFノーマル保存: {normal_path}")
             self.successful_operations.append({"種別": "PDFノーマル保存", "filename": attachment.filename, "received": self.received})
-        else:
+       else:
             print(f"PDFノーマル保存スキップ: {normal_path} はすでに存在します。")
     #======================================================================================#
     #  添付ファイルの請求書がＺＩＰの場合＿ＺＩＰ処理主処理
     #======================================================================================#    
      def pdf_psw_ari_shori_proc(self,attachment):
-        password = self._find_best_password(self.sender, self.received)
+        self.password = self._find_best_password(self.sender, self.received, self.real_sender)
         
-        if password:
+        if self.password:
             try:
-                self.kagi_proc()
+                self.kagi_proc(attachment)
             except Exception as e:
                    print(f"PDF解除失敗: {attachment.filename} → {e}")
                    self.failed_unlocks.append({"filename": attachment.filename, "received": self.received})
@@ -306,10 +379,11 @@ class PpapProcessor:
     #======================================================================================#    
      def kagi_proc(self,attachment):
         with pikepdf.open(self.file_path, password=self.password) as pdf:
-            if '/AcroForm' in pdf.root and '/JavaScript' in pdf.root.AcroForm:
-                print(f"PDFにスクリプトが含まれています: {attachment.filename}")
-                self.scripted_pdfs.append({"filename": attachment.filename, "received": received})
-            else:
+            # if '/AcroForm' in pdf.root   and   '/JavaScript' in pdf.root.AcroForm:
+            #     print(f"PDFにスクリプトが含まれています: {attachment.filename}")
+            #     self.scripted_pdfs.append({"filename": attachment.filename, "received": received})
+            # else:
+
                 unlocked_path = os.path.join(self.pdf_unlocked_folder, "unlocked_" + attachment.FileName)
                 if not os.path.exists(unlocked_path):
                     pdf.save(unlocked_path)
@@ -332,7 +406,7 @@ class PpapProcessor:
                         continue  # ディレクトリはスキップ
                     try:
                         filename = self._decode_filename(info.filename)
-                    except:
+                    except Exception as e:
                         filename = info.filename
                     
                     # パスからファイル名のみを抽出して保存
@@ -357,14 +431,60 @@ class PpapProcessor:
         """
         ZIPファイル内の文字化けしたファイル名を正しくデコードする。
         """
-        for encoding in ['utf-8', 'shift_jis', 'cp932']:
+        # for mojicode in ['utf-8', 'shift_jis', 'cp932','cp437']:
+        #     try:
+        #         decoded_name = raw_name.encode('utf-8').decode(encoding)
+        #         # Windowsで許可されていない文字を削除
+        #         return re.sub(r'[\\/:*?"<>|]', '', decoded_name)
+        #     except Exception as e:
+        #         print(f"デコード失敗（{encoding}）: {e}")  
+                
+        # return raw_name
+
+        encoding_list = ['utf-8', 'shift_jis', 'cp932', 'euc_jp']
+        ok_f = False ; i1 = 0
+        decode = None
+
+        # utf-8でエンコードして、各encodingでデコードを試す
+        while not ok_f and i1 < len(encoding_list):
             try:
-                decoded_name = raw_name.encode('cp437').decode(encoding)
-                # Windowsで許可されていない文字を削除
+                decoded_name = raw_name.encode('utf-8').decode(encoding_list[i1])
+                ok_f  = True  # 成功したらOKフラグを立てる
                 return re.sub(r'[\\/:*?"<>|]', '', decoded_name)
-            except:
-                continue
-        return raw_name
+            except  Exception as e:
+                i1 += 1  # 失敗したら次のencodingへ
+
+        #shift_jisでエンコードして、各encodingでデコードを試す
+        
+        i1 = 0
+        while not ok_f and i1 < len(encoding_list):
+            try:
+                decoded_name = raw_name.encode('shift_jis').decode(encoding_list[i1])
+                return re.sub(r'[\\/:*?"<>|]', '', decoded_name)
+                ok_f  = True  # 成功したらOKフラグを立てる
+            except Exception as e:
+                i1 += 1  # 失敗したら次のencodingへ
+
+        #cp932でエンコードして、各encodingでデコードを試す
+        i1 = 0
+        while not ok_f and i1 < len(encoding_list):
+            try:
+                decoded_name = raw_name.encode('cp932').decode(encoding_list[i1])
+                return re.sub(r'[\\/:*?"<>|]', '', decoded_name)
+                ok_f  = True  # 成功したらOKフラグを立てる
+            except Exception as e:
+                i1 += 1  # 失敗したら次のencodingへ
+
+        #ceuc_jpでエンコードして、各encodingでデコードを試す
+        i1 = 0
+        while not ok_f and i1 < len(encoding_list):
+            try:
+                decoded_name = raw_name.encode('euc_jp').decode(encoding_list[i1])
+                return re.sub(r'[\\/:*?"<>|]', '', decoded_name)
+                ok_f  = True  # 成功したらOKフラグを立てる
+            except Exception as e:
+                i1 += 1  # 失敗したら次のencodingへ
+
 
 
     ########################################################################################
@@ -381,7 +501,7 @@ class PpapProcessor:
             else:
                 print(f"ZIPパスワード不明 → ノーマル保存スキップ: {ntfnd_path} はすでに存在します。")
                 
-                
+########################################################################################                
      def sonota_shori_proc(self,attachment):
         ntfnd_filename = "NTFND_" +  attachment.filename
         ntfnd_path = os.path.join(self.normal_folder, ntfnd_filename)
@@ -438,4 +558,3 @@ class PpapProcessor:
 if __name__ == '__main__':
    processor = PpapProcessor(save_folder=r"C:\Users\016215\Desktop\ai_ocr\メール")
    processor.run()
-
