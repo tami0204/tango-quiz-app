@@ -54,30 +54,37 @@ class PpapProcessor:
      def run(self):
         """
         メインの処理フローを実行するメソッド
-        """
+        """                                                                                                                         i5
         self._get_dates_from_form()
         self._process_emails()
-        #=========================================
-        while True:
-            #---<仮想エリア2→1レコード単位で取得>
-            msg_data = self.tenpufaile_get()
+        self.wk_eof =False
+        while not self.wk_eof:
+            self._main_proc()
 
-            if msg_data is None:
-                break  # WK-EOF = 1 相当
-            elif len(msg_data["attachments"]) ==0 :
-              self.tenpufaile_nashi()
-            else:
-                wk_psw_ari_f = 0
-                self.password = None
-                tenpufaile_chk
-                if  wk_psw_ari_f  == 1:
-                    self.password = self._find_best_password(self.sender, self.received, self.real_sender)
-                if  self.password:
-                    for attachment in msg_data["attachments"]:
-                        self.tenpufaile_ari(attachment)
-        #=========================================
         self._create_summary_csv()
         self._create_gattai_folder()
+        #=========================================
+    #    while True:
+    #
+    #       #---<仮想エリア2→1レコード単位で取得>
+    #       msg_data = self.tempfile_get()
+    #
+    #       if msg_data is None:
+    #           break  # WK-EOF = 1 相当
+    #       elif len(msg_data["attachments"]) ==0 :
+    #         self.tempfile_nashi()
+    #       else:
+    #           wk_psw_ari_f = 0
+    #           self.password = None
+    #           tempfile_chk
+    #           if  wk_psw_ari_f  == 1:
+    #               self.password = self._find_best_password(self.sender, self.received, self.real_sender)
+    #           if  self.password:
+    #               for attachment in msg_data["attachments"]:
+    #                   self.tempfile_ari(attachment)
+    #    #=========================================
+    #    self._create_summary_csv()
+    #    self._create_gattai_folder()
     #======================================================================================#
     #  対象日付を入力
     #======================================================================================#
@@ -140,6 +147,36 @@ class PpapProcessor:
      #---<仮想エリア2の降順ソート(reverse True → 降順/False または省略 → 昇順)
         self.virtual_area_2.sort(key=lambda x: x["received"], reverse=False)
     #======================================================================================#
+    #  本処理の主処理
+    #======================================================================================#
+     def main_proc(self) :
+       #---<仮想エリア2→1レコード単位で取得>
+        msg_data = self.tempfile_get()
+
+       #---<仮想エリア2→1レコード単位で取得>
+        if msg_data is None:
+           self.wk_eof = True
+           return
+
+        if len(msg_data["attachments"]) ==0 :
+           self.tempfile_nashi()
+        else:
+            self.password = None
+            wk_pass_ari =None
+            for attachment in msg_data["attachments"]:
+                if  self.password:
+                    self.tempfile_ari(attachment)
+                else:
+                    self.tempfile_save(attachment)
+                    wk_pass_ari = self.tempfile_shubetsu(attachment)
+                    if  wk_pass_ari:
+                        self.password = self._find_best_password(self.sender, self.received, self.real_sender)
+                    if  self.password:
+                        self.tempfile_ari(attachment)
+                    else:
+                        print(f"password get err! → {attachment.filename}")
+
+    #======================================================================================#
     #  対象メールの辞書化
     #======================================================================================#
      def male_naiyo_get(self, message, subject):
@@ -174,7 +211,7 @@ class PpapProcessor:
             "subject": subject,
             "body": message.Body or "",
             "received": message.ReceivedTime,
-            "attachments": message.Attachments
+            "attachments": message.attachments
     })
      # def male_naiyo_get(self, message, subject):
      #        snd_Email_Addr = message.SenderEmailAddress
@@ -187,12 +224,12 @@ class PpapProcessor:
      #            "subject": subject,
      #            "body": message.Body or "",
      #            "received": message.ReceivedTime,
-     #            "attachments": message.Attachments
+     #            "attachments": message.attachments
      #        })
     #======================================================================================#
     #  対象メールの辞書化→1件単位抽出
     #======================================================================================#
-     def tenpufaile_get(self):
+     def tempfile_get(self):
        if self.read_pointer >= len(self.virtual_area_2):
            return None  # EOF 相当
        else:
@@ -217,7 +254,7 @@ class PpapProcessor:
     #======================================================================================#
     #  添付ファイルなしの請求書メール
     #======================================================================================#
-     def tenpufaile_nashi(self):
+     def tempfile_nashi(self):
             body = self.body
             subject = self.subject
             safe_subject = re.sub(r'[\\/:*?"<>|\t\n\r]', '', subject)
@@ -233,19 +270,25 @@ class PpapProcessor:
             print(f"添付ファイルなし → 本文を保存: {body_path}")
             self.successful_operations.append({"種別": "本文保存", "filename": body_filename, "received": self.received, "urls": urls})
     #======================================================================================#
-    #  添付ファイルありの請求書メール_check
+    #  添付ファイルありの請求書メール_save
     #======================================================================================#
-     def tenpufaile_chk(self, attachment):
+     def tempfile_save(self, attachment):
      #----<tenpu file -> file saver
             self.filename = attachment.filename.lower()
             self.file_path = os.path.join(self.save_folder, self.filename)
             attachment.SaveAsFile(self.file_path)
 
+    #======================================================================================#
+    #  添付ファイルありの請求書メール_file shubetu de yarukotowo waketa
+    #======================================================================================#
+     def tempfile_shubetsu(self, attachment):
      #----<file shuruide check                                                                                                                              c
             if  self.filename.endswith(".pdf"):
-                pdf_chk
+                wk_psw_ari = self.pdf_chk(attachment)
+                return wk_psw_ari
             elif self.filename.endswith(".zip"):
-                zip_chk
+                wk_psw_ari = self.zip_chk(attachment)
+                return wk_psw_ari
                 else:
 
     #======================================================================================#
@@ -254,29 +297,31 @@ class PpapProcessor:
      def pdf_chk(self, attachment):
             try:
                    with pikepdf.open(self.file_path) as pdf:
+                   return False  # psw no
             except pikepdf.PasswordError:
-                    wk_paw_ari_f = 1
+                   return True  # パスワードあり
             except Exception as e:
-                    print(f"PDF処理エラー: {self.filename} → {e}")
+                   print(f"PDF処理エラー: {self.filename} → {e}")
+                   return False  # psw no
 
     #======================================================================================#
     #  添付ファイルありの請求書メール_check_zip
     #======================================================================================#
      def zip_chk(self, attachment):
-            wk_paw_ari_f = 1
+             return True  # パスワードあり
 
     #======================================================================================#
     #  添付ファイルありの請求書メール
     #======================================================================================#
-     def tenpufaile_ari(self, attachment):
+     def tempfile_ari(self, attachment):
             if self.filename.endswith(".pdf"):
               try:
-                     if  wk_psw_ari_f  = 1 :
+                     if  wk_psw_ari:
                          self.pdf_psw_ari_shori_proc(attachment)
-                     else
+                     else:
                          self.pdf_shori_proc(attachment)
               except Exception as e:
-                      print(f"tenpufaile_ari: {self.filename} → {e}")
+                      print(f"tempfile_ari: {self.filename} → {e}")
 
             elif self.filename.endswith(".zip"):
                 if self.password:
@@ -289,7 +334,7 @@ class PpapProcessor:
     #======================================================================================#
     #  添付ファイルありの請求書メール
     #======================================================================================#
-    #def tenpufaile_ari(self, attachment):
+    #def tempfile_ari(self, attachment):
     #       if self.filename.endswith(".pdf"):
     #           try:
     #                  with pikepdf.open(self.file_path) as pdf:
@@ -317,40 +362,20 @@ class PpapProcessor:
     #======================================================================================#
      def _find_best_password(self, sender, received_time, real_sender):
         """
-        送信者と受信日時が最も近いメールからパスワードを検索する。
+        受信日時が最も近いメールからパスワードを検索する。
         """
         best_msg = None
         min_diff = float('inf')
-        ########################################################################
-        if  sender == "urs-k_kikaku-bounces@ur-systems.co.jp":
-            wk_sender = real_sender
-        else :
-            wk_sender =  sender
-
-        ########################################################################
-        received=None
         #---<パスワード抽出(本体メールは対象外)
-        brk_f=0
-        for msg_data in self.virtual_area_2:
-            if msg_data["sender"]  ==  "urs-k_kikaku-bounces@ur-systems.co.jp":
-               wk_senderm = real_sender
-            else :
-               wk_senderm=  msg_data["sender"]
-            if wk_senderm != wk_sender :
-               if brk_f == 1:
-                  break
-               else:
-                  continue
-            body = msg_data["body"]
-            received = msg_data["received"]
-            if received_time ==  received:
+        for fbp_msg_data in self.virtual_area_2:
+            body = fbp_msg_data["body"]
+            received = fbp_msg_data["received"]
+            if not("パスワード" in body or "開封パスワード" in body):
                continue
-            if "パスワード" in body or "開封パスワード" in body:
-                diff = abs((received_time - received).total_seconds())
-                if diff < min_diff:
-                    min_diff = diff
-                    best_msg = msg_data
-                    brk_f = 1
+            diff = abs((received -received_time ).total_seconds())
+            if  diff < min_diff:
+                min_diff = diff
+                best_msg = fbp_msg_data
 
         #---<パスワード抽出
         if received_time!= received:
@@ -479,49 +504,6 @@ class PpapProcessor:
                      return self.sanitize_filename(decoded_name)
                  except  Exception as e
                      continue
-    #
-    #   # utf-8でエンコードして、各encodingでデコードを試す
-    #   while not ok_f and i1 < len(encoding_list):
-    #       try:
-    #           decoded_name = raw_name.encode('utf-8').decode(encoding_list[i1])
-    #           ok_f  = True  # 成功したらOKフラグを立てる
-    #           return re.sub(r'[\\/:*?"<>|]', '', decoded_name)
-    #       except  Exception as e:
-    #           i1 += 1  # 失敗したら次のencodingへ
-    #
-    #   #shift_jisでエンコードして、各encodingでデコードを試す
-    #
-    #   i1 = 0
-    #   while not ok_f and i1 < len(encoding_list):
-    #       try:
-    #           decoded_name = raw_name.encode('shift_jis').decode(encoding_list[i1])
-    #           return re.sub(r'[\\/:*?"<>|]', '', decoded_name)
-    #           ok_f  = True  # 成功したらOKフラグを立てる
-    #       except Exception as e:
-    #           i1 += 1  # 失敗したら次のencodingへ
-    #
-    #   #cp932でエンコードして、各encodingでデコードを試す
-    #   i1 = 0
-    #   while not ok_f and i1 < len(encoding_list):
-    #       try:
-    #           decoded_name = raw_name.encode('cp932').decode(encoding_list[i1])
-    #           return re.sub(r'[\\/:*?"<>|]', '', decoded_name)
-    #           ok_f  = True  # 成功したらOKフラグを立てる
-    #       except Exception as e:
-    #           i1 += 1  # 失敗したら次のencodingへ
-    #
-    #   #ceuc_jpでエンコードして、各encodingでデコードを試す
-    #   i1 = 0
-    #   while not ok_f and i1 < len(encoding_list):
-    #       try:
-    #           decoded_name = raw_name.encode('euc_jp').decode(encoding_list[i1])
-    #           return re.sub(r'[\\/:*?"<>|]', '', decoded_name)
-    #           ok_f  = True  # 成功したらOKフラグを立てる
-    #       except Exception as e:
-    #           i1 += 1  # 失敗したら次のencodingへ
-    #
-    #
-    #
     #======================================================================================#
     #  禁止文字の除去
     #======================================================================================#    ##
