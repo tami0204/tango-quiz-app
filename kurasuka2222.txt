@@ -63,28 +63,6 @@ class PpapProcessor:
 
         self._create_summary_csv()
         self._create_gattai_folder()
-        #=========================================
-    #    while True:
-    #
-    #       #---<仮想エリア2→1レコード単位で取得>
-    #       msg_data = self.tempfile_get()
-    #
-    #       if msg_data is None:
-    #           break  # WK-EOF = 1 相当
-    #       elif len(msg_data["attachments"]) ==0 :
-    #         self.tempfile_nashi()
-    #       else:
-    #           wk_psw_ari_f = 0
-    #           self.password = None
-    #           tempfile_chk
-    #           if  wk_psw_ari_f  == 1:
-    #               self.password = self._find_best_password(self.sender, self.received, self.real_sender)
-    #           if  self.password:
-    #               for attachment in msg_data["attachments"]:
-    #                   self.tempfile_ari(attachment)
-    #    #=========================================
-    #    self._create_summary_csv()
-    #    self._create_gattai_folder()
     #======================================================================================#
     #  対象日付を入力
     #======================================================================================#
@@ -165,14 +143,14 @@ class PpapProcessor:
             wk_pass_ari =None
             for attachment in msg_data["attachments"]:
                 if  self.password:
-                    self.tempfile_ari(attachment)
+                    self.tempfile_ari(attachment,wk_pass_ari)
                 else:
                     self.tempfile_save(attachment)
                     wk_pass_ari = self.tempfile_shubetsu(attachment)
                     if  wk_pass_ari:
                         self.password = self._find_best_password(self.sender, self.received, self.real_sender)
                     if  self.password:
-                        self.tempfile_ari(attachment)
+                        self.tempfile_ari(attachment,wk_pass_ari)
                     else:
                         print(f"password get err! → {attachment.filename}")
 
@@ -313,7 +291,7 @@ class PpapProcessor:
     #======================================================================================#
     #  添付ファイルありの請求書メール
     #======================================================================================#
-     def tempfile_ari(self, attachment):
+     def tempfile_ari(self, attachment,wk_pass_ari):
             if self.filename.endswith(".pdf"):
               try:
                      if  wk_psw_ari:
@@ -325,38 +303,12 @@ class PpapProcessor:
 
             elif self.filename.endswith(".zip"):
                 if self.password:
-                    if self._extract_zip_with_encoding(self.file_path, self.password, self.received):
+                    if self._extract_zip_with_encoding(self.file_path, self.password):
                         self.successful_operations.append({"種別": "ZIP解凍成功", "filename": self.filename, "received": self.received})
                     else:
                         self.failed_extractions.append({"filename": self.filename, "received": self.received})
                 else:
                         self.zip_psw_sonota_proc(attachment)
-    #======================================================================================#
-    #  添付ファイルありの請求書メール
-    #======================================================================================#
-    #def tempfile_ari(self, attachment):
-    #       if self.filename.endswith(".pdf"):
-    #           try:
-    #                  with pikepdf.open(self.file_path) as pdf:
-    #                   self.pdf = pdf
-    #                   self.pdf_shori_proc(attachment)
-    #           except pikepdf.PasswordError:
-    #                   self.pdf_psw_ari_shori_proc(attachment)
-    #           except Exception as e:
-    #                   print(f"PDF処理エラー: {self.filename} → {e}")
-    #
-    #       elif self.filename.endswith(".zip"):
-    #           self.password = self._find_best_password(self.sender, self.received, self.real_sender)
-    #           if self.password:
-    #               if self._extract_zip_with_encoding(self.file_path, self.password, self.received):
-    #                   self.successful_operations.append({"種別": "ZIP解凍成功", "filename": self.filename, "received": self.received})
-    #               else:
-    #                   self.failed_extractions.append({"filename": self.filename, "received": self.received})
-    #           else:
-    #               try:
-    #                   self.kaitos_seiko_shori_proc(attachment)
-    #               except Exception as e:
-    #                   self.sonota_shori_proc(attachment)
     #======================================================================================#
     #  添付ファイルの請求書がＺＩＰの場合＿ＰＰＡＰ等パスワードが書いてあるメールを特定
     #======================================================================================#
@@ -459,7 +411,7 @@ class PpapProcessor:
     #======================================================================================#
     #  添付ファイルの請求書がＺＩＰの場合＿解凍処理
     #======================================================================================#    ##
-     def _extract_zip_with_encoding(self, zip_path, password, received):
+     def _extract_zip_with_encoding(self, zip_path, password):
         """
         パスワード付きZIPファイルを解凍し、中身を保存する。
         """
@@ -472,38 +424,66 @@ class PpapProcessor:
                         filename = self._decode_filename(info.filename)
                     except Exception as e:
                         filename = info.filename
-
-                    # パスからファイル名のみを抽出して保存
-                    target_path = os.path.join(self.zip_extracted_folder, os.path.basename(filename))
-
-                    # ファイルがすでに存在する場合はスキップ
-                    if not os.path.exists(target_path):  #←パスワードより解凍する
-                        with zf.open(info, pwd=bytes(password, 'utf-8')) as source, open(target_path, 'wb') as target:
-                            shutil.copyfileobj(source, target)
-                    else:
-                        print(f"ZIP解凍済みのためスキップ: {target_path} はすでに存在します。")
+                    self._extract_zip_with_write_or_skip(zf, info, filename, password)
             print(f"ZIP解凍成功: {zip_path}")
+
             return True
         except Exception as e:
             print(f"ZIP解凍失敗: {zip_path} → {e}")
             return False
+    #======================================================================================#
+    #  添付ファイルの請求書がＺＩＰの場合＿解凍後、保存or あればスルー主処理
+    #======================================================================================#    ##
+     def _extract_zip_with_write_or_skip(self, zf, info, filename, password):
+
+        # パスからファイル名のみを抽出、文字化け対処
+        dec_filename =self._decode_filename(os.path.basename(filename))
+        target_path = os.path.join(self.zip_extracted_folder, dec_filename)
+
+        # ファイルの存在チェック
+        if  os.path.exists(target_path):
+            print(f"ZIP解凍済みのためスキップ: {target_path} はすでに存在します。")
+            return
+
+        # ファイル保存
+        self.saver_copy_proc(zf,info,password,target_path)
+
+    #======================================================================================#
+    #  添付ファイルの請求書がＺＩＰの場合＿保存 or スルー
+    #======================================================================================#    ##
+     def saver_copy_proc(self,zf,info,password,target_path):
+
+         try:
+                 with zf.open(info, pwd=bytes(password, 'utf-8')) as source:
+                     with open(target_path, 'wb') as target:
+                               shutil.copyfileobj(source, target)
+                     print(f"ZIP解凍成功: {info.filename} → {target_path}")
+         except  Exception as e:
+                 print(f"ZIP読み込み失敗: {info.filename} → {e}")
+                 return    False
 
     #======================================================================================#
     #  ＺＩＰ文字化けを修正
     #======================================================================================#    ##
-     def _decode_filename(self, raw_name):
+     def _decode_filename(self, raw_area):
         """
         ZIPファイル内の文字化けしたファイル名を正しくデコードする。
         """
+        e =None
         mojicode = ['utf-8', 'shift_jis', 'cp932', 'euc_jp']
         decoded_name = None
-        for  src_enc  in  mojicode
-            for  dct_enc  in  mojicode
-                 try:
-                     decoded_name = raw_name.encode(src_enc).decode(dct_enc)
-                     return self.sanitize_filename(decoded_name)
-                 except  Exception as e
-                     continue
+        try:
+            for  src_enc  in  mojicode:
+                for  dct_enc  in  mojicode:
+                     try:
+                         decoded_name = raw_area.encode(src_enc).decode(dct_enc)
+                         return self.sanitize_filename(decoded_name)
+                     except  Exception as e
+                         continue
+         except  Exception as e
+                 print(f"文字変換エラー: {raw_area} → {e}")
+                 return
+
     #======================================================================================#
     #  禁止文字の除去
     #======================================================================================#    ##
@@ -512,7 +492,7 @@ class PpapProcessor:
 
     ########################################################################################
      def zip_psw_sonota_proc(self,attachment):
-        if self._extract_zip_with_encoding(self.file_path, "akkodis2025", self.received):
+        if self._extract_zip_with_encoding(self.file_path, "akkodis2025"):
             self.successful_operations.append({"種別": "ZIP解凍成功", "filename": attachment.filename, "received": self.received})
         else:
             ntfnd_filename = "NTFND_" + self.attachment.filename
